@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Wheat,
   Tractor,
@@ -42,8 +42,17 @@ import { FarmerOrders } from './FarmerOrders';
 import { AICropAdvisor } from './AICropAdvisor';
 import { MachineryRental } from './MachineryRental';
 import { MarketIntelligence } from './MarketIntelligence';
+import { MobileBottomNav } from './common/MobileBottomNav';
 import { INITIAL_MARKETPLACE_CROPS } from '../data/marketplaceData';
 import { AppRoute, UserProfile, CropListing, Order, BuyerOffer, FarmerOrder } from '../types';
+import { useLanguage } from '../context/LanguageContext';
+import { useToast } from '../context/ToastContext';
+import {
+  subscribeToCropListings,
+  createCropListing,
+  updateCropListing,
+  deleteCropListing
+} from '../lib/firebase';
 
 interface FarmerDashboardProps {
   currentUser: UserProfile | null;
@@ -120,80 +129,18 @@ const INITIAL_CROPS: CropListing[] = [
   },
 ];
 
-// Initial realistic demo orders
-const INITIAL_ORDERS: FarmerOrder[] = [
-  {
-    id: 'PO-2026-991',
-    buyerName: 'Vikram Singhania',
-    buyerCompany: 'AgroFoods Processing Hub Pvt Ltd',
-    buyerLocation: 'Indore Mandi Hub, MP',
-    cropName: '100 Qtl Sharbati Premium Wheat',
-    quantityQuintals: 100,
-    agreedPricePerQuintal: 2600,
-    totalAmount: 260000,
-    status: 'In Transit',
-    orderDate: '26 Aug 2026',
-    deliveryDate: '29 Aug 2026',
-    vehicleNumber: 'MP-09-AB-1234 (E-Way: #88392)',
-    escrowStatus: 'Protected',
-  },
-  {
-    id: 'PO-2026-842',
-    buyerName: 'Gaurav Aggarwal',
-    buyerCompany: 'Shree Ganesh Oil Industries',
-    buyerLocation: 'Alwar & Delhi Wholesale Mandi',
-    cropName: '40 Qtl Yellow Mustard Seed',
-    quantityQuintals: 40,
-    agreedPricePerQuintal: 5400,
-    totalAmount: 216000,
-    status: 'Pickup Scheduled',
-    orderDate: '27 Aug 2026',
-    deliveryDate: '30 Aug 2026',
-    vehicleNumber: 'Driver: Rajesh Verma (Truck #RJ-02-CD-5678)',
-    escrowStatus: 'Protected',
-  },
-  {
-    id: 'PO-2026-720',
-    buyerName: 'Kailash Chand',
-    buyerCompany: 'Kisan Setu Wholesale Escrow',
-    buyerLocation: 'Ujjain Central Mandi',
-    cropName: '25 Qtl Desi Chana (Bengal Gram)',
-    quantityQuintals: 25,
-    agreedPricePerQuintal: 4900,
-    totalAmount: 122500,
-    status: 'Completed',
-    orderDate: '20 Aug 2026',
-    deliveryDate: '25 Aug 2026',
-    vehicleNumber: 'Completed via Hub Depot #04',
-    escrowStatus: 'Released',
-  },
-];
-
-// Realistic demo buyer offers
+// Initial realistic demo buyer offers
 const INITIAL_OFFERS: BuyerOffer[] = [
   {
-    id: 'OFFER-101',
-    buyerName: 'Vikram Singhania',
-    company: 'AgroFoods Processing Hub',
-    cropName: 'Sharbati Premium Wheat',
-    offeredPrice: 2580,
-    askingPrice: 2600,
-    quantityRequested: 80,
-    pickupLocation: 'Direct Farm Gate / Mandi Platform 3',
-    paymentTerms: '100% Instant Escrow upon Digital Weighing',
-    status: 'Pending',
-    receivedTime: '2 hours ago',
-  },
-  {
     id: 'OFFER-102',
-    buyerName: 'Deepak Mehrotra',
+    buyerName: 'Vikram Singhania',
     company: 'Golden Harvest Flour Mills',
     cropName: 'Sharbati Premium Wheat',
     offeredPrice: 2590,
     askingPrice: 2600,
     quantityRequested: 100,
     pickupLocation: 'Farm Gate Loading Hub',
-    paymentTerms: 'KrishiSetu Escrow Protected',
+    paymentTerms: 'KrishiSetu Escrow Protected (100% सुरक्षित भुगतान)',
     status: 'Pending',
     receivedTime: '5 hours ago',
   },
@@ -231,13 +178,27 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
   onMarkInTransit,
   onMarkCompleted,
 }) => {
-  // Support both 'dashboard' and legacy 'overview'
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  const { isHindi } = useLanguage();
+  const { showSuccess, showInfo } = useToast();
 
   // Dynamic state for crop listings & interactive modals
   const [cropListings, setCropListings] = useState<CropListing[]>(INITIAL_CROPS);
   const [offers, setOffers] = useState<BuyerOffer[]>(INITIAL_OFFERS);
+
+  // Subscribe to real-time crops
+  useEffect(() => {
+    const unsub = subscribeToCropListings((updated) => {
+      if (updated && updated.length > 0) {
+        setCropListings(updated);
+      }
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
 
   // Use orders from props
   const orders = propOrders || [];
@@ -245,7 +206,6 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
   // Modals & form state
   const [isListCropModalOpen, setIsListCropModalOpen] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<BuyerOffer | null>(null);
-  const [listingSuccessMessage, setListingSuccessMessage] = useState('');
   const [farmerMarketplaceSubTab, setFarmerMarketplaceSubTab] = useState<'offers' | 'all-crops'>('offers');
 
   // New crop form state
@@ -260,7 +220,7 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
   const location = currentUser?.location || 'Ujjain, Madhya Pradesh';
 
   // Handle new crop submission
-  const handleCreateCropListing = (e: React.FormEvent) => {
+  const handleCreateCropListing = async (e: React.FormEvent) => {
     e.preventDefault();
     const qty = parseFloat(newQuantity) || 50;
     const price = parseFloat(newPrice) || 2500;
@@ -284,12 +244,23 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
       inquiriesCount: 0,
       clusterLocation: `${location.split(',')[0]} Cluster, MP`,
       imageUrl: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&w=600&q=80',
+      farmerUid: currentUser?.uid || 'demo-farmer-ramesh',
+      farmerName: farmerName,
     };
 
     setCropListings([newListing, ...cropListings]);
     setIsListCropModalOpen(false);
-    setListingSuccessMessage(`Successfully listed ${qty} Quintals of ${newListing.cropName}! It is now visible to 400+ verified buyers.`);
-    setTimeout(() => setListingSuccessMessage(''), 6000);
+
+    try {
+      await createCropListing(newListing, currentUser?.uid);
+    } catch (err) {
+      console.warn('Firestore crop listing notice:', err);
+    }
+
+    showSuccess(
+      isHindi ? `${newListing.cropName} सफलतापूर्वक लिस्ट हो गई!` : `Successfully listed ${qty} Qtl of ${newListing.cropName}!`,
+      isHindi ? 'यह फसल अब 400+ प्रमाणित खरीदारों को दिखाई देगी।' : 'It is now visible to verified wholesale buyers.'
+    );
   };
 
   // Handle Offer Accept / Decline
@@ -299,21 +270,27 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
 
     setOffers(offers.filter(o => o.id !== offerId));
     setSelectedOffer(null);
-    setListingSuccessMessage(`Offer from ${offer.company} accepted! Escrow amount of ₹${(offer.quantityRequested * offer.offeredPrice).toLocaleString('en-IN')} has been locked in escrow.`);
-    setTimeout(() => setListingSuccessMessage(''), 6000);
+    showSuccess(
+      isHindi ? `${offer.company} का प्रस्ताव स्वीकार किया गया!` : `Offer from ${offer.company} accepted!`,
+      isHindi ? `₹${(offer.quantityRequested * offer.offeredPrice).toLocaleString('en-IN')} की सुरक्षित एस्क्रो राशि लॉक हो गई है।` : `Escrow locked.`
+    );
   };
 
   const handleDeclineOffer = (offerId: string) => {
     setOffers(offers.filter(o => o.id !== offerId));
     setSelectedOffer(null);
+    showInfo(
+      isHindi ? 'प्रस्ताव अस्वीकार किया गया' : 'Offer Declined',
+      isHindi ? 'खरीदार को सूचना भेज दी गई है।' : 'Buyer informed.'
+    );
   };
 
-  // Normalized active tab helper (handles both 'overview' and 'dashboard')
+  // Normalized active tab helper
   const currentTab = activeTab === 'overview' ? 'dashboard' : activeTab;
 
   return (
-    <div className="min-h-[calc(100vh-5rem)] bg-[#F8FAF5] flex flex-col md:flex-row">
-      {/* Reusable Sidebar Component with all 8 items */}
+    <div className="min-h-[calc(100vh-5rem)] bg-[#F8FAF5] flex flex-col md:flex-row pb-20 md:pb-8">
+      {/* Reusable Sidebar Component */}
       <Sidebar
         role="farmer"
         activeTab={currentTab}
@@ -330,65 +307,58 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
         {/* Mobile Header with Sidebar Toggle */}
         <div className="md:hidden flex items-center justify-between bg-white p-4 rounded-2xl border-2 border-[#1B4332]/15 mb-4 shadow-xs">
           <div className="flex items-center gap-2">
-            <Wheat className="w-5 h-5 text-[#1B4332]" />
-            <span className="font-black uppercase tracking-wider text-xs text-[#11281E]">Farmer Dashboard</span>
+            <Wheat className="w-6 h-6 text-[#1B4332]" />
+            <div>
+              <span className="font-black uppercase tracking-wider text-xs text-[#11281E] block">
+                {isHindi ? 'किसान डैशबोर्ड' : 'Farmer Dashboard'}
+              </span>
+              <span className="text-[10px] text-[#4D6B53] font-bold">
+                {isHindi ? 'कृषि सेतु - सीधा बाज़ार' : 'KrishiSetu Portal'}
+              </span>
+            </div>
           </div>
           <button
             id="farmer-dashboard-menu-open-btn"
             onClick={() => setMobileSidebarOpen(true)}
-            className="py-2 px-3 bg-[#1B4332] text-[#E8D5B5] rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 border border-[#1B4332]"
+            className="py-2.5 px-4 bg-[#1B4332] text-[#FAF3E0] rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-2 border border-[#1B4332] min-h-[44px]"
           >
             <Menu className="w-4 h-4" />
-            <span>Open Menu</span>
+            <span>{isHindi ? 'मेनू खोलें' : 'Menu'}</span>
           </button>
         </div>
-
-        {/* Global Toast Notification */}
-        {listingSuccessMessage && (
-          <div className="mb-5 p-4 rounded-2xl bg-[#E8F0E5] border-2 border-[#1B4332] flex items-center justify-between shadow-sm animate-fade-in">
-            <div className="flex items-center gap-3">
-              <CheckCircle2 className="w-5 h-5 text-[#1B4332] shrink-0" />
-              <p className="text-xs sm:text-sm font-black text-[#11281E]">{listingSuccessMessage}</p>
-            </div>
-            <button
-              onClick={() => setListingSuccessMessage('')}
-              className="text-[#4D6B53] hover:text-[#11281E] p-1"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
 
         {/* 1. WELCOME SECTION FOR THE FARMER */}
         <div className="bg-[#1B4332] text-white rounded-[32px] p-6 sm:p-8 shadow-md mb-6 relative overflow-hidden border-2 border-[#1B4332]">
           <div className="relative z-10">
             <div className="flex flex-wrap items-center gap-2 mb-3">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#2D5A27] text-[#E8D5B5] text-[10px] font-black uppercase tracking-widest border border-[#E8D5B5]/30">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#E8D5B5]" />
-                <span>Verified Kisan • प्रमाणित किसान</span>
+              <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#2D5A27] text-[#FAF3E0] text-xs font-black uppercase tracking-wider border border-[#FAF3E0]/30">
+                <ShieldCheck className="w-4 h-4 text-[#FAF3E0]" />
+                <span>{isHindi ? 'प्रमाणित किसान (Verified Kisan)' : 'Verified Kisan'}</span>
               </div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-white text-[10px] font-bold">
-                <Sun className="w-3.5 h-3.5 text-[#E8D5B5]" />
-                <span>Ujjain: 29°C Sunny • Ideal Harvest Weather</span>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-white text-xs font-bold">
+                <Sun className="w-4 h-4 text-[#FAF3E0]" />
+                <span>{isHindi ? 'उज्जैन: 29°C धूप • फसल कटाई व सुखाने के लिए उत्तम' : 'Ujjain: 29°C Sunny • Ideal Harvest Weather'}</span>
               </div>
             </div>
 
             <h1 className="text-2xl sm:text-4xl font-black text-white uppercase tracking-tight">
-              Namaste, {farmerName}! (नमस्ते)
+              {isHindi ? `नमस्ते, ${farmerName} जी!` : `Namaste, ${farmerName}!`}
             </h1>
 
-            <p className="mt-2 text-xs sm:text-sm text-[#E8D5B5] font-bold max-w-3xl leading-relaxed">
-              Your direct agricultural portal is active. Manage your harvest batches, review verified wholesale buyer bids, access farm equipment, and track digital escrow payments with zero middleman commissions.
+            <p className="mt-2 text-xs sm:text-sm text-[#FAF3E0] font-bold max-w-3xl leading-relaxed">
+              {isHindi 
+                ? 'आपका सीधा किसान पोर्टल सक्रिय है। बिना किसी दलाली के सीधे बड़ी कंपनियों और मिलों को फसल बेचें, ट्रैक्टर किराए पर लें और 100% सुरक्षित भुगतान पाएं।'
+                : 'Your direct agricultural portal is active. Manage harvest batches, review verified buyer bids, access farm equipment, and track digital escrow payments.'}
             </p>
 
             <div className="mt-4 pt-3 border-t border-white/15 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-[#D8E6D3] font-bold">
               <span className="flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-[#E8D5B5]" />
+                <MapPin className="w-4 h-4 text-[#FAF3E0]" />
                 <span>{location} • 12.5 Acres (Malwa FPO Cluster)</span>
               </span>
               <span className="flex items-center gap-1.5">
-                <TrendingUp className="w-3.5 h-3.5 text-[#E8D5B5]" />
-                <span>Mandi Benchmark: Wheat @ ₹2,610/Qtl (+₹335 above MSP)</span>
+                <TrendingUp className="w-4 h-4 text-[#FAF3E0]" />
+                <span>{isHindi ? 'आज का मंडी भाव: गेहूं @ ₹2,610/क्विंटल (MSP से +₹335 ज्यादा)' : 'Mandi Benchmark: Wheat @ ₹2,610/Qtl (+₹335 above MSP)'}</span>
               </span>
             </div>
           </div>
@@ -398,153 +368,157 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
           </div>
         </div>
 
-        {/* 6, 7, 8, 9. PROMINENT QUICK ACTIONS BAR */}
-        <div className="mb-6 p-4 sm:p-5 bg-white rounded-[28px] border-2 border-[#1B4332]/15 shadow-xs">
-          <div className="flex items-center justify-between mb-3 px-1">
-            <h2 className="text-xs font-black uppercase tracking-wider text-[#4D6B53] flex items-center gap-2">
+        {/* 2. PROMINENT LARGE-TOUCH QUICK ACTIONS BAR */}
+        <div className="mb-6 p-4 sm:p-6 bg-white rounded-[28px] border-2 border-[#1B4332]/15 shadow-xs">
+          <div className="flex items-center justify-between mb-3.5 px-1">
+            <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-[#4D6B53] flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-[#8C6228]" />
-              <span>Quick Farm Actions / मुख्य किसान सेवाएं</span>
+              <span>{isHindi ? '1-क्लिक मुख्य किसान सेवाएं (Quick Actions)' : 'Quick Farm Actions'}</span>
             </h2>
-            <span className="text-[10px] font-black uppercase tracking-wider text-[#8FA396]">Instant Execution</span>
+            <span className="text-[10px] font-black uppercase tracking-wider text-[#8FA396]">
+              {isHindi ? 'तुरंत शुरू करें' : 'Instant Execution'}
+            </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* 6. List New Crop button */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            {/* Action 1: List New Crop */}
             <button
               id="btn-list-new-crop"
               onClick={() => setIsListCropModalOpen(true)}
-              className="p-3 sm:p-4 rounded-2xl bg-[#1B4332] text-white hover:bg-[#2D5A27] transition-all flex flex-col items-start justify-between shadow-xs border-2 border-[#1B4332] group cursor-pointer"
+              className="p-4 sm:p-5 rounded-2xl bg-[#1B4332] text-white hover:bg-[#2D5A27] transition-all flex flex-col items-start justify-between shadow-xs border-2 border-[#1B4332] group cursor-pointer min-h-[96px] active:scale-98"
             >
-              <div className="w-8 h-8 rounded-xl bg-[#2D5A27] text-[#E8D5B5] flex items-center justify-center mb-2 border border-[#E8D5B5]/20 group-hover:scale-105 transition-transform">
-                <PlusCircle className="w-4 h-4" />
+              <div className="w-10 h-10 rounded-xl bg-[#2D5A27] text-[#FAF3E0] flex items-center justify-center mb-2 border border-[#FAF3E0]/20 group-hover:scale-105 transition-transform">
+                <PlusCircle className="w-6 h-6" />
               </div>
               <div className="text-left">
-                <span className="block text-xs sm:text-sm font-black uppercase tracking-tight text-white">List New Crop</span>
-                <span className="block text-[9px] text-[#E8D5B5] font-bold mt-0.5">नई फसल जोड़ें</span>
+                <span className="block text-sm sm:text-base font-black uppercase tracking-tight text-white">
+                  {isHindi ? '+ फसल बेचें' : '+ List Crop'}
+                </span>
+                <span className="block text-[10px] text-[#FAF3E0] font-bold mt-0.5">
+                  {isHindi ? 'नया स्टॉक जोड़ें' : 'Sell Produce'}
+                </span>
               </div>
             </button>
 
-            {/* 7. Find Buyers button */}
+            {/* Action 2: Check Mandi Rates */}
             <button
-              id="btn-find-buyers"
-              onClick={() => setActiveTab('marketplace')}
-              className="p-3 sm:p-4 rounded-2xl bg-white text-[#11281E] hover:bg-[#E8F0E5] transition-all flex flex-col items-start justify-between border-2 border-[#1B4332]/20 group cursor-pointer"
+              id="btn-mandi-rates"
+              onClick={() => setActiveTab('market-prices')}
+              className="p-4 sm:p-5 rounded-2xl bg-white text-[#11281E] hover:bg-[#E8F0E5] transition-all flex flex-col items-start justify-between border-2 border-[#1B4332]/25 group cursor-pointer min-h-[96px] active:scale-98"
             >
-              <div className="w-8 h-8 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center mb-2 border border-[#1B4332]/20 group-hover:scale-105 transition-transform">
-                <Search className="w-4 h-4" />
+              <div className="w-10 h-10 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center mb-2 border border-[#1B4332]/20 group-hover:scale-105 transition-transform">
+                <TrendingUp className="w-6 h-6" />
               </div>
               <div className="text-left">
-                <span className="block text-xs sm:text-sm font-black uppercase tracking-tight text-[#11281E]">Find Buyers</span>
-                <span className="block text-[9px] text-[#4D6B53] font-bold mt-0.5">व्यापारी व मिल खोजें</span>
+                <span className="block text-sm sm:text-base font-black uppercase tracking-tight text-[#11281E]">
+                  {isHindi ? 'मंडी भाव देखें' : 'Mandi Rates'}
+                </span>
+                <span className="block text-[10px] text-[#4D6B53] font-bold mt-0.5">
+                  {isHindi ? 'बाज़ार का ताजा रुख' : 'Price Intelligence'}
+                </span>
               </div>
             </button>
 
-            {/* 8. AI Crop Advisor button */}
+            {/* Action 3: Rent Machinery */}
+            <button
+              id="btn-machinery-rental"
+              onClick={() => setActiveTab('machinery')}
+              className="p-4 sm:p-5 rounded-2xl bg-white text-[#11281E] hover:bg-[#E8F0E5] transition-all flex flex-col items-start justify-between border-2 border-[#1B4332]/25 group cursor-pointer min-h-[96px] active:scale-98"
+            >
+              <div className="w-10 h-10 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center mb-2 border border-[#1B4332]/20 group-hover:scale-105 transition-transform">
+                <Tractor className="w-6 h-6" />
+              </div>
+              <div className="text-left">
+                <span className="block text-sm sm:text-base font-black uppercase tracking-tight text-[#11281E]">
+                  {isHindi ? 'ट्रैक्टर किराया' : 'Rent Tractor'}
+                </span>
+                <span className="block text-[10px] text-[#4D6B53] font-bold mt-0.5">
+                  {isHindi ? 'पास की मशीन बुक करें' : 'Machinery Hub'}
+                </span>
+              </div>
+            </button>
+
+            {/* Action 4: AI Crop Doctor */}
             <button
               id="btn-ai-crop-advisor"
               onClick={() => setActiveTab('advisory')}
-              className="p-3 sm:p-4 rounded-2xl bg-white text-[#11281E] hover:bg-[#E8F0E5] transition-all flex flex-col items-start justify-between border-2 border-[#1B4332]/20 group cursor-pointer"
+              className="p-4 sm:p-5 rounded-2xl bg-white text-[#11281E] hover:bg-[#E8F0E5] transition-all flex flex-col items-start justify-between border-2 border-[#1B4332]/25 group cursor-pointer min-h-[96px] active:scale-98"
             >
-              <div className="w-8 h-8 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center mb-2 border border-[#1B4332]/20 group-hover:scale-105 transition-transform">
-                <Bot className="w-4 h-4" />
+              <div className="w-10 h-10 rounded-xl bg-[#FAF3E0] text-[#8C6228] flex items-center justify-center mb-2 border border-[#E8D5B5] group-hover:scale-105 transition-transform">
+                <Bot className="w-6 h-6" />
               </div>
               <div className="text-left">
-                <span className="block text-xs sm:text-sm font-black uppercase tracking-tight text-[#11281E]">AI Crop Advisor</span>
-                <span className="block text-[9px] text-[#4D6B53] font-bold mt-0.5">स्मार्ट फसल सलाह</span>
-              </div>
-            </button>
-
-            {/* 9. Rent Machinery button */}
-            <button
-              id="btn-rent-machinery"
-              onClick={() => setActiveTab('machinery')}
-              className="p-3 sm:p-4 rounded-2xl bg-white text-[#11281E] hover:bg-[#FAF3E0] transition-all flex flex-col items-start justify-between border-2 border-[#E8D5B5] group cursor-pointer"
-            >
-              <div className="w-8 h-8 rounded-xl bg-[#FAF3E0] text-[#8C6228] flex items-center justify-center mb-2 border border-[#E8D5B5] group-hover:scale-105 transition-transform">
-                <Tractor className="w-4 h-4" />
-              </div>
-              <div className="text-left">
-                <span className="block text-xs sm:text-sm font-black uppercase tracking-tight text-[#11281E]">Rent Machinery</span>
-                <span className="block text-[9px] text-[#8C6228] font-bold mt-0.5">ट्रैक्टर व उपकरण</span>
+                <span className="block text-sm sm:text-base font-black uppercase tracking-tight text-[#11281E]">
+                  {isHindi ? 'फसल डॉक्टर' : 'Crop Doctor'}
+                </span>
+                <span className="block text-[10px] text-[#8C6228] font-bold mt-0.5">
+                  {isHindi ? 'कीट व रोग सलाह' : 'Smart Advice'}
+                </span>
               </div>
             </button>
           </div>
         </div>
 
-        {/* TAB 1: DASHBOARD (MAIN OVERVIEW) */}
+        {/* TAB 1: MAIN DASHBOARD OVERVIEW */}
         {currentTab === 'dashboard' && (
           <div className="space-y-6">
-            {/* 2, 3, 4, 5. FOUR KEY METRIC CARDS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* 2. Total listed crops */}
-              <div
-                id="farmer-metric-total-listed-crops"
-                onClick={() => setActiveTab('my-crops')}
-                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-black text-[#4D6B53] uppercase tracking-widest">Total Listed Crops</span>
-                  <div className="w-9 h-9 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center border border-[#1B4332]/15">
-                    <Wheat className="w-5 h-5" />
-                  </div>
-                </div>
-                <div className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-[#11281E]">
-                  {cropListings.length} Crops
-                </div>
-                <p className="text-xs text-[#2D5A27] mt-1 font-black uppercase tracking-wider flex items-center gap-1">
-                  <span>{cropListings.reduce((sum, c) => sum + (c.quantity || 0), 0)} {cropListings[0]?.unit || 'Quintals'} Listed</span>
-                </p>
-              </div>
-
-              {/* 3. Active orders */}
+            {/* KEY METRICS GRID */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Metric 1: Active Orders */}
               <div
                 id="farmer-metric-active-orders"
                 onClick={() => setActiveTab('orders')}
-                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all"
+                className="bg-white p-5 sm:p-6 rounded-[28px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all min-h-[120px]"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-black text-[#4D6B53] uppercase tracking-widest">Active Orders</span>
-                  <div className="w-9 h-9 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center border border-[#1B4332]/15">
+                  <span className="text-xs font-black text-[#4D6B53] uppercase tracking-wider">
+                    {isHindi ? 'सक्रिय ऑर्डर' : 'Active Orders'}
+                  </span>
+                  <div className="w-10 h-10 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center border border-[#1B4332]/15">
                     <ShoppingBag className="w-5 h-5" />
                   </div>
                 </div>
                 <div className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-[#11281E]">
-                  {orders.filter(o => o.status !== 'Completed').length} Active
+                  {orders.filter(o => o.status !== 'Completed').length} {isHindi ? 'चालू ऑर्डर' : 'Active'}
                 </div>
                 <p className="text-xs text-[#2D5A27] mt-1 font-black uppercase tracking-wider">
-                  ₹{orders.filter(o => o.status !== 'Completed').reduce((sum, o) => sum + o.totalAmount, 0).toLocaleString('en-IN')} in fulfillment
+                  ₹{orders.filter(o => o.status !== 'Completed').reduce((sum, o) => sum + o.totalAmount, 0).toLocaleString('en-IN')} {isHindi ? 'सुरक्षित भुगतान प्रक्रिया में' : 'in fulfillment'}
                 </p>
               </div>
 
-              {/* 4. Pending offers */}
+              {/* Metric 2: Buyer Offers */}
               <div
                 id="farmer-metric-pending-offers"
                 onClick={() => setActiveTab('marketplace')}
-                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all"
+                className="bg-white p-5 sm:p-6 rounded-[28px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all min-h-[120px]"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-black text-[#4D6B53] uppercase tracking-widest">Pending Offers</span>
-                  <div className="w-9 h-9 rounded-xl bg-[#FAF3E0] text-[#8C6228] flex items-center justify-center border border-[#E8D5B5]">
+                  <span className="text-xs font-black text-[#4D6B53] uppercase tracking-wider">
+                    {isHindi ? 'खरीदारों के प्रस्ताव' : 'Pending Offers'}
+                  </span>
+                  <div className="w-10 h-10 rounded-xl bg-[#FAF3E0] text-[#8C6228] flex items-center justify-center border border-[#E8D5B5]">
                     <TrendingUp className="w-5 h-5" />
                   </div>
                 </div>
                 <div className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-[#11281E]">
-                  {offers.length} Buyer Offers
+                  {offers.length} {isHindi ? 'नए प्रस्ताव' : 'Buyer Offers'}
                 </div>
                 <p className="text-xs text-[#8C6228] mt-1 font-black uppercase tracking-wider">
-                  Top bid: ₹{Math.max(...offers.map(o => o.offeredPrice), 2580)} / Qtl
+                  {isHindi ? 'उच्चतम बोली:' : 'Top bid:'} ₹{Math.max(...offers.map(o => o.offeredPrice), 2580)} / {isHindi ? 'क्विंटल' : 'Qtl'}
                 </p>
               </div>
 
-              {/* 5. Estimated earnings */}
+              {/* Metric 3: Estimated Earnings */}
               <div
                 id="farmer-metric-estimated-earnings"
                 onClick={() => setActiveTab('orders')}
-                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all"
+                className="bg-white p-5 sm:p-6 rounded-[28px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all min-h-[120px]"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-black text-[#4D6B53] uppercase tracking-widest">Estimated Earnings</span>
-                  <div className="w-9 h-9 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center border border-[#1B4332]/15">
+                  <span className="text-xs font-black text-[#4D6B53] uppercase tracking-wider">
+                    {isHindi ? 'कुल अनुमानित आय' : 'Total Earnings'}
+                  </span>
+                  <div className="w-10 h-10 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center border border-[#1B4332]/15">
                     <IndianRupee className="w-5 h-5" />
                   </div>
                 </div>
@@ -552,40 +526,40 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
                   ₹{(orders.reduce((sum, o) => sum + o.totalAmount, 0)).toLocaleString('en-IN')}
                 </div>
                 <p className="text-xs text-[#2D5A27] mt-1 font-black uppercase tracking-wider flex items-center gap-1">
-                  <span>+16.4% above standard MSP</span>
+                  <span>{isHindi ? 'सरकारी एमएसपी से +16.4% अधिक लाभ' : '+16.4% above standard MSP'}</span>
                 </p>
               </div>
             </div>
 
-            {/* 10. RECENT CROP LISTINGS SECTION */}
-            <div id="recent-crop-listings-section" className="bg-white p-6 sm:p-7 rounded-[32px] border-2 border-[#1B4332]/15 shadow-xs">
+            {/* RECENT CROP LISTINGS SECTION */}
+            <div id="recent-crop-listings-section" className="bg-white p-6 sm:p-8 rounded-[32px] border-2 border-[#1B4332]/15 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b-2 border-[#1B4332]/10">
                 <div>
-                  <h3 className="font-black uppercase tracking-tight text-lg text-[#11281E] flex items-center gap-2">
-                    <Wheat className="w-5 h-5 text-[#1B4332]" />
-                    <span>Recent Crop Listings (हालिया फसल लिस्टिंग)</span>
+                  <h3 className="font-black uppercase tracking-tight text-lg sm:text-xl text-[#11281E] flex items-center gap-2">
+                    <Wheat className="w-6 h-6 text-[#1B4332]" />
+                    <span>{isHindi ? 'मेरी हालिया फसल लिस्टिंग' : 'Recent Crop Listings'}</span>
                   </h3>
                   <p className="text-xs text-[#4D6B53] font-bold mt-0.5">
-                    Live batches available to verified buyers across India with automated quality benchmarking.
+                    {isHindi ? 'सीधे थोक खरीदारों को दिखने वाला आपका स्टॉक' : 'Live batches available to verified buyers across India.'}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <button
                     id="btn-list-crop-from-table"
                     onClick={() => {
                       setActiveTab('my-crops');
                       setIsListCropModalOpen(true);
                     }}
-                    className="py-2 px-3.5 bg-[#1B4332] text-[#E8D5B5] hover:bg-[#2D5A27] rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 border border-[#1B4332] transition-colors cursor-pointer"
+                    className="py-3 px-5 bg-[#1B4332] text-[#FAF3E0] hover:bg-[#2D5A27] rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-2 border border-[#1B4332] transition-colors cursor-pointer min-h-[44px]"
                   >
-                    <PlusCircle className="w-3.5 h-3.5" />
-                    <span>List Crop</span>
+                    <PlusCircle className="w-4 h-4" />
+                    <span>{isHindi ? '+ नई फसल जोड़ें' : 'List Crop'}</span>
                   </button>
                   <button
                     onClick={() => setActiveTab('my-crops')}
-                    className="py-2 px-3 bg-white text-[#1B4332] hover:bg-[#E8F0E5] rounded-full text-xs font-black uppercase tracking-wider border-2 border-[#1B4332]/20 transition-colors cursor-pointer"
+                    className="py-3 px-4 bg-white text-[#1B4332] hover:bg-[#E8F0E5] rounded-full text-xs font-black uppercase tracking-wider border-2 border-[#1B4332]/25 transition-colors cursor-pointer min-h-[44px]"
                   >
-                    View All ({cropListings.length})
+                    {isHindi ? `सभी फसलें (${cropListings.length})` : `View All (${cropListings.length})`}
                   </button>
                 </div>
               </div>
@@ -598,48 +572,41 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
                   >
                     <div>
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-[#1B4332] bg-[#E8F0E5] px-2.5 py-0.5 rounded-full border border-[#1B4332]/20">
-                          {crop.status}
+                        <span className="text-[11px] font-black uppercase tracking-wider text-[#1B4332] bg-[#E8F0E5] px-3 py-1 rounded-full border border-[#1B4332]/20">
+                          {crop.status === 'Active' ? (isHindi ? 'सक्रिय (बिक्री चालू)' : 'Active') : crop.status}
                         </span>
                         <span className="text-[10px] font-mono font-bold text-[#8FA396]">{crop.id}</span>
                       </div>
 
-                      <h4 className="font-black text-[#11281E] text-base uppercase mt-3">{crop.cropName}</h4>
-                      <p className="text-xs text-[#4D6B53] font-bold mt-0.5">{crop.hindiName}</p>
+                      <h4 className="font-black text-[#11281E] text-base uppercase mt-3">
+                        {isHindi ? (crop.hindiName || crop.cropName) : crop.cropName}
+                      </h4>
+                      <p className="text-xs text-[#4D6B53] font-bold mt-0.5">
+                        {isHindi ? crop.cropName : (crop.hindiName || crop.cropName)}
+                      </p>
 
                       <div className="mt-3 py-2 px-3 rounded-xl bg-white border border-[#1B4332]/10 space-y-1 text-xs">
                         <div className="flex justify-between font-bold text-[#4D6B53]">
-                          <span>Available Stock:</span>
-                          <span className="text-[#11281E] font-black">{crop.quantity} {crop.unit || 'Quintals'}</span>
+                          <span>{isHindi ? 'उपलब्ध मात्रा:' : 'Stock:'}</span>
+                          <span className="text-[#11281E] font-black">{crop.quantity} {isHindi ? 'क्विंटल' : 'Quintals'}</span>
                         </div>
                         <div className="flex justify-between font-bold text-[#4D6B53]">
-                          <span>Asking Base Price:</span>
-                          <span className="text-[#1B4332] font-black">₹{crop.expectedPrice.toLocaleString('en-IN')} / {crop.unit ? crop.unit.replace(/s$/, '') : 'Qtl'}</span>
+                          <span>{isHindi ? 'अपेक्षित मूल्य:' : 'Price:'}</span>
+                          <span className="text-[#1B4332] font-black">₹{crop.expectedPrice.toLocaleString('en-IN')} / {isHindi ? 'क्विंटल' : 'Qtl'}</span>
                         </div>
                         <div className="flex justify-between font-bold text-[#4D6B53]">
-                          <span>Quality Grade:</span>
-                          <span className="text-[#11281E] font-black truncate max-w-[140px]">{crop.qualityGrade}</span>
+                          <span>{isHindi ? 'गुणवत्ता:' : 'Grade:'}</span>
+                          <span className="text-[#2D5A27] font-black">{crop.qualityGrade}</span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t-2 border-[#1B4332]/10 flex items-center justify-between">
-                      <div className="text-xs font-bold text-[#4D6B53]">
-                        {crop.inquiriesCount && crop.inquiriesCount > 0 ? (
-                          <span className="text-[#8C6228] font-black flex items-center gap-1">
-                            <TrendingUp className="w-3.5 h-3.5" />
-                            <span>{crop.inquiriesCount} Inquiries Received</span>
-                          </span>
-                        ) : (
-                          <span className="text-[#8FA396]">Live on Exchange</span>
-                        )}
-                      </div>
+                    <div className="mt-4 pt-3 border-t border-[#1B4332]/10 flex gap-2">
                       <button
                         onClick={() => setActiveTab('my-crops')}
-                        className="text-xs font-black uppercase tracking-wider text-[#1B4332] hover:underline flex items-center gap-1 cursor-pointer"
+                        className="w-full py-3 bg-white hover:bg-[#E8F0E5] text-[#1B4332] border-2 border-[#1B4332]/20 rounded-2xl text-xs font-black uppercase tracking-wider transition-colors min-h-[44px]"
                       >
-                        <span>Manage</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
+                        {isHindi ? 'विवरण देखें' : 'View Details'}
                       </button>
                     </div>
                   </div>
@@ -647,178 +614,97 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
               </div>
             </div>
 
-            {/* 11. RECENT ORDERS SECTION */}
-            <div id="recent-orders-section" className="bg-white p-6 sm:p-7 rounded-[32px] border-2 border-[#1B4332]/15 shadow-xs">
+            {/* MANDI BENCHMARK PRICE CARDS */}
+            <div className="bg-white p-6 sm:p-8 rounded-[32px] border-2 border-[#1B4332]/15 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b-2 border-[#1B4332]/10">
                 <div>
-                  <h3 className="font-black uppercase tracking-tight text-lg text-[#11281E] flex items-center gap-2">
-                    <ShoppingBag className="w-5 h-5 text-[#1B4332]" />
-                    <span>Recent Orders & Transit Updates (हालिया ऑर्डर व परिवहन)</span>
+                  <h3 className="font-black uppercase tracking-tight text-lg sm:text-xl text-[#11281E] flex items-center gap-2">
+                    <TrendingUp className="w-6 h-6 text-[#1B4332]" />
+                    <span>{isHindi ? 'प्रमुख मंडी भाव (ताजा रेट)' : 'Nearby Mandi Benchmark Rates'}</span>
                   </h3>
                   <p className="text-xs text-[#4D6B53] font-bold mt-0.5">
-                    Track pickup schedules, weighing certification, and digital escrow payouts directly.
+                    {isHindi ? 'आस-पास की प्रमुख मंडियों के भाव देखें और सही समय पर सही दाम पर फसल बेचें।' : 'Real-time indicative mandi rates compared with official MSP.'}
                   </p>
                 </div>
                 <button
-                  onClick={() => setActiveTab('orders')}
-                  className="py-2 px-3.5 bg-white text-[#1B4332] hover:bg-[#E8F0E5] rounded-full text-xs font-black uppercase tracking-wider border-2 border-[#1B4332]/20 transition-colors self-start sm:self-auto"
+                  onClick={() => setActiveTab('market-prices')}
+                  className="py-3 px-5 bg-[#1B4332] text-white hover:bg-[#2D5A27] rounded-full text-xs font-black uppercase tracking-wider transition-colors min-h-[44px]"
                 >
-                  View All Orders →
+                  {isHindi ? 'विस्तृत मंडी विश्लेषण' : 'Full Market Analytics'}
                 </button>
               </div>
 
-              <div className="space-y-3.5">
-                {orders.map((order) => {
-                  const isTransit = order.status === 'In Transit';
-                  const isScheduled = order.status === 'Pickup Scheduled';
-                  const isCompleted = order.status === 'Completed';
-
-                  return (
-                    <div
-                      key={order.id}
-                      className="p-5 rounded-2xl bg-[#F8FAF5] border-2 border-[#1B4332]/15 hover:border-[#1B4332] transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
-                    >
-                      <div className="space-y-1.5 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
-                              isTransit
-                                ? 'bg-blue-50 text-blue-900 border-blue-200'
-                                : isScheduled
-                                ? 'bg-[#FAF3E0] text-[#8C6228] border-[#E8D5B5]'
-                                : 'bg-[#E8F0E5] text-[#1B4332] border-[#1B4332]/20'
-                            }`}
-                          >
-                            {order.status}
-                          </span>
-                          <span className="text-xs font-mono font-bold text-[#8FA396]">Order #{order.id}</span>
-                          <span className="text-[10px] font-black uppercase tracking-wider bg-[#E8F0E5] text-[#1B4332] px-2 py-0.5 rounded-full border border-[#1B4332]/20">
-                            🛡️ Escrow {order.escrowStatus}
-                          </span>
-                        </div>
-
-                        <h4 className="font-black uppercase tracking-tight text-[#11281E] text-base">
-                          {order.cropName}
-                        </h4>
-
-                        <p className="text-xs text-[#4D6B53] font-bold">
-                          Buyer: <span className="text-[#11281E] font-black">{order.buyerCompany}</span> ({order.buyerName}) • {order.buyerLocation}
-                        </p>
-
-                        <p className="text-xs text-[#8FA396] font-bold flex items-center gap-1">
-                          <Truck className="w-3.5 h-3.5 text-[#2D5A27]" />
-                          <span>Logistics: {order.vehicleNumber}</span>
-                        </p>
-                      </div>
-
-                      <div className="flex md:flex-col items-center md:items-end justify-between border-t md:border-t-0 pt-3 md:pt-0 border-[#1B4332]/10 shrink-0">
-                        <div className="text-left md:text-right">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-[#8FA396] block">Agreed Value</span>
-                          <span className="text-lg font-black text-[#11281E]">₹{order.totalAmount.toLocaleString('en-IN')}</span>
-                          <span className="text-[10px] text-[#4D6B53] font-bold block">₹{order.agreedPricePerQuintal} / Qtl</span>
-                        </div>
-                        <button
-                          onClick={() => setActiveTab('orders')}
-                          className="mt-2 py-1.5 px-3 rounded-full text-xs font-black uppercase tracking-wider bg-[#1B4332] text-white hover:bg-[#2D5A27] transition-colors"
-                        >
-                          Track Status
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Pending Buyer Offers Interactive Banner */}
-            {offers.length > 0 && (
-              <div className="p-6 rounded-[32px] bg-[#FAF3E0] border-2 border-[#E8D5B5] shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-[#8C6228] text-white flex items-center justify-center font-bold">
-                      <TrendingUp className="w-5 h-5 text-[#E8D5B5]" />
-                    </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {DEMO_MANDI_PRICES.slice(0, 3).map((item, idx) => (
+                  <div key={idx} className="p-5 rounded-2xl bg-[#F8FAF5] border-2 border-[#1B4332]/15 flex flex-col justify-between">
                     <div>
-                      <h4 className="font-black uppercase tracking-tight text-base text-[#11281E]">
-                        {offers.length} New Direct Buyer Proposals Awaiting Your Review
-                      </h4>
-                      <p className="text-xs text-[#5C4520] font-bold">
-                        Wholesale buyers have submitted competitive offers directly to your farm batch.
-                      </p>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-black uppercase text-[#11281E]">{isHindi ? item.hindi : item.crop}</span>
+                        <span className="text-[10px] text-emerald-700 bg-emerald-100 font-black px-2 py-0.5 rounded-full">{item.trend}</span>
+                      </div>
+                      <span className="text-xs font-bold text-[#4D6B53]">{item.mandi}</span>
+
+                      <div className="mt-3 text-2xl font-black text-[#1B4332]">
+                        ₹{item.current.toLocaleString('en-IN')} <span className="text-xs text-[#4D6B53] font-bold">/ {isHindi ? 'क्विंटल' : 'Qtl'}</span>
+                      </div>
+                      <div className="text-xs font-bold text-[#8FA396] mt-0.5">
+                        {isHindi ? 'सरकारी एमएसपी:' : 'Govt MSP:'} ₹{item.msp.toLocaleString('en-IN')}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-3 border-t border-[#1B4332]/10 text-xs font-bold text-[#4D6B53] flex justify-between">
+                      <span>{isHindi ? 'आज का न्यूनतम-अधिकतम:' : 'Today Range:'}</span>
+                      <span className="font-black text-[#11281E]">₹{item.low} - ₹{item.high}</span>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setSelectedOffer(offers[0])}
-                    className="py-2 px-4 bg-[#8C6228] text-white rounded-full text-xs font-black uppercase tracking-wider hover:bg-[#6D4C1D] transition-colors self-start sm:self-auto shadow-xs"
-                  >
-                    Review Top Offer →
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {offers.map((offer) => (
-                    <div
-                      key={offer.id}
-                      className="p-4 rounded-2xl bg-white border border-[#E8D5B5] flex flex-col justify-between"
-                    >
-                      <div>
-                        <div className="flex justify-between items-center text-xs font-bold text-[#8FA396]">
-                          <span>{offer.cropName}</span>
-                          <span>{offer.receivedTime}</span>
-                        </div>
-                        <h5 className="font-black text-[#11281E] text-sm uppercase mt-1">{offer.company}</h5>
-                        <p className="text-xs text-[#8C6228] font-black mt-2">
-                          Offered: ₹{offer.offeredPrice} / Qtl for {offer.quantityRequested} Qtl
-                        </p>
-                      </div>
-                      <div className="mt-3 pt-2 border-t border-[#E8D5B5]/60 flex gap-2">
-                        <button
-                          onClick={() => handleAcceptOffer(offer.id)}
-                          className="flex-1 py-1.5 px-2 bg-[#1B4332] text-white rounded-full text-[10px] font-black uppercase tracking-wider hover:bg-[#2D5A27]"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          onClick={() => setSelectedOffer(offer)}
-                          className="py-1.5 px-2 bg-[#FAF3E0] text-[#8C6228] rounded-full text-[10px] font-black uppercase tracking-wider border border-[#E8D5B5]"
-                        >
-                          Details
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                ))}
               </div>
-            )}
+            </div>
           </div>
         )}
 
-        {/* TAB 2: MY CROPS (FULL DETAILED LISTINGS VIEW & LIFECYCLE) */}
+        {/* TAB 2: MY CROPS */}
         {currentTab === 'my-crops' && (
           <MyCrops
-            currentUser={currentUser}
             cropListings={cropListings}
-            onAddCrop={(newCrop) => {
+            onAddCrop={async (newCrop) => {
               setCropListings([newCrop, ...cropListings]);
+              try {
+                await createCropListing(newCrop, currentUser?.uid);
+              } catch (e) {
+                console.warn('Create crop Firestore notice:', e);
+              }
             }}
-            onUpdateCrop={(updatedCrop) => {
+            onUpdateCrop={async (updatedCrop) => {
               setCropListings(cropListings.map((c) => (c.id === updatedCrop.id ? updatedCrop : c)));
+              try {
+                await updateCropListing(updatedCrop.id, updatedCrop);
+              } catch (e) {
+                console.warn('Update crop Firestore notice:', e);
+              }
             }}
-            onDeleteCrop={(id) => {
+            onDeleteCrop={async (id) => {
               setCropListings(cropListings.filter((c) => c.id !== id));
+              try {
+                await deleteCropListing(id);
+              } catch (e) {
+                console.warn('Delete crop Firestore notice:', e);
+              }
             }}
-            onToggleSold={(id) => {
+            onToggleSold={async (id) => {
+              const target = cropListings.find(c => c.id === id);
+              if (!target) return;
+              const nextStatus = target.status === 'Sold' ? 'Active' : 'Sold';
               setCropListings(
-                cropListings.map((c) => {
-                  if (c.id === id) {
-                    const nextStatus = c.status === 'Sold' ? 'Active' : 'Sold';
-                    return { ...c, status: nextStatus };
-                  }
-                  return c;
-                })
+                cropListings.map((c) => (c.id === id ? { ...c, status: nextStatus } : c))
               );
+              try {
+                await updateCropListing(id, { status: nextStatus });
+              } catch (e) {
+                console.warn('Toggle sold crop Firestore notice:', e);
+              }
             }}
-            onFindBuyers={(cropName) => {
+            onFindBuyers={() => {
               setActiveTab('marketplace');
             }}
             isAddModalOpenInitially={isListCropModalOpen}
@@ -826,30 +712,29 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
           />
         )}
 
-        {/* TAB 3: MARKETPLACE (BUYER DEMAND & LIVE PRODUCE EXCHANGE) */}
+        {/* TAB 3: MARKETPLACE (BUYER DEMAND & LIVE EXCHANGE) */}
         {currentTab === 'marketplace' && (
           <div className="space-y-6">
-            {/* View Sub-selector */}
             <div className="flex items-center gap-3 bg-white p-2 rounded-2xl border-2 border-[#1B4332]/15 w-fit">
               <button
                 onClick={() => setFarmerMarketplaceSubTab('offers')}
-                className={`py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                className={`py-3 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer min-h-[44px] ${
                   farmerMarketplaceSubTab === 'offers'
                     ? 'bg-[#1B4332] text-white shadow-xs'
                     : 'text-[#4D6B53] hover:text-[#11281E] hover:bg-[#F8FAF5]'
                 }`}
               >
-                Incoming Buyer Offers ({offers.length})
+                {isHindi ? `खरीदारों के प्रस्ताव (${offers.length})` : `Incoming Buyer Offers (${offers.length})`}
               </button>
               <button
                 onClick={() => setFarmerMarketplaceSubTab('all-crops')}
-                className={`py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                className={`py-3 px-5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer min-h-[44px] ${
                   farmerMarketplaceSubTab === 'all-crops'
                     ? 'bg-[#1B4332] text-white shadow-xs'
                     : 'text-[#4D6B53] hover:text-[#11281E] hover:bg-[#F8FAF5]'
                 }`}
               >
-                Browse Live Market Exchange
+                {isHindi ? 'थोक कृषि बाज़ार देखें' : 'Browse Market Exchange'}
               </button>
             </div>
 
@@ -859,22 +744,24 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <Store className="w-6 h-6 text-[#1B4332]" />
-                      <h2 className="text-2xl font-black uppercase tracking-tight text-[#11281E]">Wholesale Buyer Exchange (थोक खरीदार बाज़ार)</h2>
+                      <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-[#11281E]">
+                        {isHindi ? 'थोक खरीदारों के प्रस्ताव' : 'Wholesale Buyer Proposals'}
+                      </h2>
                     </div>
                     <p className="text-xs text-[#4D6B53] font-bold mt-1">
-                      Connect directly with verified agro-processing companies, millers, and corporate procurement houses.
+                      {isHindi 
+                        ? 'प्रमाणित मिल मालिकों और कंपनियों से आपकी फसल के लिए सीधी मांग और बोलियां।'
+                        : 'Connect directly with verified agro-processing companies, millers, and corporate procurement houses.'}
                     </p>
                   </div>
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-[#E8F0E5] text-[#1B4332] rounded-full text-xs font-black uppercase tracking-wider border border-[#1B4332]/20">
+                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#E8F0E5] text-[#1B4332] rounded-full text-xs font-black uppercase tracking-wider border border-[#1B4332]/20">
                     <ShieldCheck className="w-4 h-4 text-[#2D5A27]" />
-                    <span>100% Escrow Protected</span>
+                    <span>{isHindi ? '100% सुरक्षित एस्क्रो भुगतान' : '100% Escrow Protected'}</span>
                   </div>
                 </div>
 
                 {/* Active Buyer Inquiries */}
                 <div className="mt-6 space-y-4">
-                  <h3 className="text-sm font-black uppercase tracking-wider text-[#4D6B53]">Direct Buyer Inquiries for Your Harvest</h3>
-
                   {offers.map((offer) => (
                     <div
                       key={offer.id}
@@ -883,7 +770,7 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-[#FAF3E0] text-[#8C6228] border border-[#E8D5B5]">
-                            Buyer Offer
+                            {isHindi ? 'खरीदार प्रस्ताव' : 'Buyer Offer'}
                           </span>
                           <span className="text-xs font-bold text-[#8FA396]">{offer.receivedTime}</span>
                         </div>
@@ -891,29 +778,31 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
                           {offer.company} ({offer.buyerName})
                         </h4>
                         <p className="text-xs text-[#4D6B53] font-bold">
-                          Interested Crop: <span className="font-black text-[#11281E]">{offer.cropName}</span> • Requested: {offer.quantityRequested} Quintals
+                          {isHindi ? 'मांगी गई फसल:' : 'Interested Crop:'} <span className="font-black text-[#11281E]">{offer.cropName}</span> • {isHindi ? 'मात्रा:' : 'Requested:'} {offer.quantityRequested} {isHindi ? 'क्विंटल' : 'Quintals'}
                         </p>
                         <p className="text-xs text-[#8FA396] font-bold mt-1 flex items-center gap-1">
                           <MapPin className="w-3.5 h-3.5 text-[#2D5A27]" />
-                          <span>Pickup: {offer.pickupLocation}</span>
+                          <span>{isHindi ? 'उठाव स्थान:' : 'Pickup:'} {offer.pickupLocation}</span>
                         </p>
                       </div>
 
                       <div className="text-left md:text-right shrink-0">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-[#8FA396] block">Offered Rate</span>
-                        <span className="text-xl font-black text-[#1B4332]">₹{offer.offeredPrice.toLocaleString('en-IN')} / Qtl</span>
-                        <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[#8FA396] block">
+                          {isHindi ? 'प्रस्तावित दर' : 'Offered Rate'}
+                        </span>
+                        <span className="text-xl font-black text-[#1B4332]">₹{offer.offeredPrice.toLocaleString('en-IN')} / {isHindi ? 'क्विंटल' : 'Qtl'}</span>
+                        <div className="mt-2.5 flex items-center gap-2">
                           <button
                             onClick={() => handleAcceptOffer(offer.id)}
-                            className="py-2 px-4 bg-[#1B4332] text-white hover:bg-[#2D5A27] rounded-full text-xs font-black uppercase tracking-wider cursor-pointer"
+                            className="py-3 px-5 bg-[#1B4332] text-white hover:bg-[#2D5A27] rounded-full text-xs font-black uppercase tracking-wider cursor-pointer min-h-[44px] active:scale-98"
                           >
-                            Accept Offer
+                            {isHindi ? 'स्वीकार करें (Accept)' : 'Accept Offer'}
                           </button>
                           <button
                             onClick={() => handleDeclineOffer(offer.id)}
-                            className="py-2 px-3 bg-white text-[#4D6B53] hover:text-rose-700 rounded-full text-xs font-black uppercase tracking-wider border border-[#1B4332]/20 cursor-pointer"
+                            className="py-3 px-4 bg-white text-[#4D6B53] hover:text-rose-700 rounded-full text-xs font-black uppercase tracking-wider border border-[#1B4332]/20 cursor-pointer min-h-[44px]"
                           >
-                            Decline
+                            {isHindi ? 'अस्वीकार' : 'Decline'}
                           </button>
                         </div>
                       </div>
@@ -960,39 +849,43 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
         {currentTab === 'profile' && (
           <div className="space-y-6">
             <div className="bg-white p-6 sm:p-8 rounded-[32px] border-2 border-[#1B4332]/15 shadow-xs">
-              <div className="pb-6 border-b-2 border-[#1B4332]/10 flex items-center gap-2">
-                <User className="w-6 h-6 text-[#1B4332]" />
+              <div className="pb-6 border-b-2 border-[#1B4332]/10 flex items-center gap-3">
+                <User className="w-7 h-7 text-[#1B4332]" />
                 <div>
-                  <h2 className="text-2xl font-black uppercase tracking-tight text-[#11281E]">Farmer Profile & Verification (किसान प्रोफ़ाइल)</h2>
-                  <p className="text-xs text-[#4D6B53] font-bold">Kisan Credit, Land Holding, and Direct Escrow Bank Details.</p>
+                  <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-[#11281E]">
+                    {isHindi ? 'किसान प्रोफ़ाइल व खाता विवरण' : 'Farmer Profile & Verification'}
+                  </h2>
+                  <p className="text-xs text-[#4D6B53] font-bold">
+                    {isHindi ? 'भूमि रकबा, बैंक खाता और सुरक्षित एस्क्रो भुगतान विवरण।' : 'Kisan Credit, Land Holding, and Direct Escrow Bank Details.'}
+                  </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                 <div className="p-6 rounded-[28px] bg-[#F8FAF5] border-2 border-[#1B4332]/15 space-y-4">
                   <h3 className="text-sm font-black uppercase tracking-wider text-[#11281E] flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-[#2D5A27]" />
-                    <span>Personal & Farm Land Details</span>
+                    <ShieldCheck className="w-5 h-5 text-[#2D5A27]" />
+                    <span>{isHindi ? 'व्यक्तिगत व भूमि विवरण' : 'Personal & Farm Land Details'}</span>
                   </h3>
-                  <div className="space-y-2 text-xs font-bold text-[#4D6B53]">
-                    <div className="flex justify-between py-1.5 border-b border-[#1B4332]/10">
-                      <span>Full Name:</span>
+                  <div className="space-y-2.5 text-xs font-bold text-[#4D6B53]">
+                    <div className="flex justify-between py-2 border-b border-[#1B4332]/10">
+                      <span>{isHindi ? 'पूरा नाम:' : 'Full Name:'}</span>
                       <span className="text-[#11281E] font-black">{farmerName}</span>
                     </div>
-                    <div className="flex justify-between py-1.5 border-b border-[#1B4332]/10">
-                      <span>Registered Phone:</span>
+                    <div className="flex justify-between py-2 border-b border-[#1B4332]/10">
+                      <span>{isHindi ? 'पंजीकृत मोबाइल:' : 'Registered Phone:'}</span>
                       <span className="text-[#11281E] font-black">{currentUser?.phone || '+91 98260 12345'}</span>
                     </div>
-                    <div className="flex justify-between py-1.5 border-b border-[#1B4332]/10">
-                      <span>Location / Tehsil:</span>
+                    <div className="flex justify-between py-2 border-b border-[#1B4332]/10">
+                      <span>{isHindi ? 'स्थान व तहसील:' : 'Location / Tehsil:'}</span>
                       <span className="text-[#11281E] font-black">{location}</span>
                     </div>
-                    <div className="flex justify-between py-1.5 border-b border-[#1B4332]/10">
-                      <span>Total Land Area:</span>
+                    <div className="flex justify-between py-2 border-b border-[#1B4332]/10">
+                      <span>{isHindi ? 'कुल कृषि भूमि:' : 'Total Land Area:'}</span>
                       <span className="text-[#11281E] font-black">12.5 Acres (Khasra #142/1)</span>
                     </div>
-                    <div className="flex justify-between py-1.5">
-                      <span>FPO Affiliation:</span>
+                    <div className="flex justify-between py-2">
+                      <span>{isHindi ? 'एफपीओ सहभागिता:' : 'FPO Affiliation:'}</span>
                       <span className="text-[#1B4332] font-black">Malwa Kisan Producer Cooperative</span>
                     </div>
                   </div>
@@ -1000,25 +893,25 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
 
                 <div className="p-6 rounded-[28px] bg-[#F8FAF5] border-2 border-[#1B4332]/15 space-y-4">
                   <h3 className="text-sm font-black uppercase tracking-wider text-[#11281E] flex items-center gap-2">
-                    <IndianRupee className="w-4 h-4 text-[#2D5A27]" />
-                    <span>Direct Payment Settlement Account</span>
+                    <IndianRupee className="w-5 h-5 text-[#2D5A27]" />
+                    <span>{isHindi ? 'सीधा भुगतान बैंक खाता (Direct Settlement)' : 'Direct Payment Settlement Account'}</span>
                   </h3>
-                  <div className="space-y-2 text-xs font-bold text-[#4D6B53]">
-                    <div className="flex justify-between py-1.5 border-b border-[#1B4332]/10">
-                      <span>Bank Name:</span>
+                  <div className="space-y-2.5 text-xs font-bold text-[#4D6B53]">
+                    <div className="flex justify-between py-2 border-b border-[#1B4332]/10">
+                      <span>{isHindi ? 'बैंक का नाम:' : 'Bank Name:'}</span>
                       <span className="text-[#11281E] font-black">State Bank of India (SBI)</span>
                     </div>
-                    <div className="flex justify-between py-1.5 border-b border-[#1B4332]/10">
-                      <span>Account Number:</span>
-                      <span className="text-[#11281E] font-black">•••• •••• 8812 (Verified)</span>
+                    <div className="flex justify-between py-2 border-b border-[#1B4332]/10">
+                      <span>{isHindi ? 'खाता संख्या:' : 'Account Number:'}</span>
+                      <span className="text-[#11281E] font-black">•••• •••• 8812 (सत्यापित)</span>
                     </div>
-                    <div className="flex justify-between py-1.5 border-b border-[#1B4332]/10">
+                    <div className="flex justify-between py-2 border-b border-[#1B4332]/10">
                       <span>IFSC Code:</span>
                       <span className="text-[#11281E] font-black">SBIN0001234</span>
                     </div>
-                    <div className="flex justify-between py-1.5">
-                      <span>Settlement Mode:</span>
-                      <span className="text-[#2D5A27] font-black">Instant Escrow Release (T+0)</span>
+                    <div className="flex justify-between py-2">
+                      <span>{isHindi ? 'भुगतान माध्यम:' : 'Settlement Mode:'}</span>
+                      <span className="text-[#2D5A27] font-black">{isHindi ? 'सीधा बैंक ट्रांसफर (तत्काल)' : 'Instant Escrow Release (T+0)'}</span>
                     </div>
                   </div>
                 </div>
@@ -1032,27 +925,30 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#11281E]/60 backdrop-blur-xs">
             <div className="bg-white w-full max-w-lg rounded-[32px] border-2 border-[#1B4332] p-6 sm:p-8 shadow-xl max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between pb-4 border-b-2 border-[#1B4332]/10">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <Wheat className="w-6 h-6 text-[#1B4332]" />
-                  <h3 className="text-xl font-black uppercase tracking-tight text-[#11281E]">List New Crop Batch (फसल लिस्ट करें)</h3>
+                  <h3 className="text-xl font-black uppercase tracking-tight text-[#11281E]">
+                    {isHindi ? 'नई फसल लिस्ट करें (बिक्री हेतु)' : 'List New Crop Batch'}
+                  </h3>
                 </div>
                 <button
                   onClick={() => setIsListCropModalOpen(false)}
-                  className="p-1.5 text-[#4D6B53] hover:text-[#11281E] rounded-full"
+                  className="p-2 text-[#4D6B53] hover:text-[#11281E] rounded-full min-h-[40px] min-w-[40px] flex items-center justify-center"
+                  aria-label="Close modal"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-6 h-6" />
                 </button>
               </div>
 
               <form onSubmit={handleCreateCropListing} className="mt-6 space-y-4">
                 <div>
                   <label className="block text-xs font-black uppercase tracking-wider text-[#11281E] mb-1.5">
-                    Crop Type & Name / फसल का प्रकार
+                    {isHindi ? 'फसल का नाम व प्रकार' : 'Crop Type & Name'}
                   </label>
                   <select
                     value={newCropName}
                     onChange={(e) => setNewCropName(e.target.value)}
-                    className="w-full p-3 rounded-2xl border-2 border-[#1B4332]/20 text-xs font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332]"
+                    className="w-full p-4 rounded-2xl border-2 border-[#1B4332]/25 text-sm font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332] min-h-[50px]"
                   >
                     <option value="Wheat (शरबती गेहूं)">Wheat (शरबती गेहूं)</option>
                     <option value="Mustard (पीली सरसों)">Mustard (पीली सरसों)</option>
@@ -1064,14 +960,14 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
 
                 <div>
                   <label className="block text-xs font-black uppercase tracking-wider text-[#11281E] mb-1.5">
-                    Variety / किस्म
+                    {isHindi ? 'किस्म / वैरायटी' : 'Variety'}
                   </label>
                   <input
                     type="text"
                     value={newVariety}
                     onChange={(e) => setNewVariety(e.target.value)}
                     placeholder="e.g. C-306 Desi Sharbati"
-                    className="w-full p-3 rounded-2xl border-2 border-[#1B4332]/20 text-xs font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332]"
+                    className="w-full p-4 rounded-2xl border-2 border-[#1B4332]/25 text-sm font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332] min-h-[50px]"
                     required
                   />
                 </div>
@@ -1079,7 +975,7 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-[#11281E] mb-1.5">
-                      Quantity (Quintals / क्विंटल)
+                      {isHindi ? 'मात्रा (क्विंटल में)' : 'Quantity (Quintals)'}
                     </label>
                     <input
                       type="number"
@@ -1087,14 +983,14 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
                       onChange={(e) => setNewQuantity(e.target.value)}
                       placeholder="e.g. 50"
                       min="1"
-                      className="w-full p-3 rounded-2xl border-2 border-[#1B4332]/20 text-xs font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332]"
+                      className="w-full p-4 rounded-2xl border-2 border-[#1B4332]/25 text-sm font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332] min-h-[50px]"
                       required
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-[#11281E] mb-1.5">
-                      Expected Price (₹/Quintal)
+                      {isHindi ? 'अपेक्षित मूल्य (₹/क्विंटल)' : 'Expected Price (₹/Qtl)'}
                     </label>
                     <input
                       type="number"
@@ -1102,7 +998,7 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
                       onChange={(e) => setNewPrice(e.target.value)}
                       placeholder="e.g. 2600"
                       min="500"
-                      className="w-full p-3 rounded-2xl border-2 border-[#1B4332]/20 text-xs font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332]"
+                      className="w-full p-4 rounded-2xl border-2 border-[#1B4332]/25 text-sm font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332] min-h-[50px]"
                       required
                     />
                   </div>
@@ -1111,7 +1007,7 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-[#11281E] mb-1.5">
-                      Moisture % (नमी)
+                      {isHindi ? 'नमी प्रतिशत (Moisture %)' : 'Moisture %'}
                     </label>
                     <input
                       type="number"
@@ -1119,22 +1015,22 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
                       value={newMoisture}
                       onChange={(e) => setNewMoisture(e.target.value)}
                       placeholder="e.g. 10.5"
-                      className="w-full p-3 rounded-2xl border-2 border-[#1B4332]/20 text-xs font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332]"
+                      className="w-full p-4 rounded-2xl border-2 border-[#1B4332]/25 text-sm font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332] min-h-[50px]"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-[#11281E] mb-1.5">
-                      Quality Grade / गुणवत्ता
+                      {isHindi ? 'गुणवत्ता श्रेणी' : 'Quality Grade'}
                     </label>
                     <select
                       value={newGrade}
                       onChange={(e) => setNewGrade(e.target.value as 'A+' | 'A' | 'B+')}
-                      className="w-full p-3 rounded-2xl border-2 border-[#1B4332]/20 text-xs font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332]"
+                      className="w-full p-4 rounded-2xl border-2 border-[#1B4332]/25 text-sm font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332] min-h-[50px]"
                     >
-                      <option value="A+">Grade A+ (Premium Export)</option>
-                      <option value="A">Grade A (Standard Mill Grade)</option>
-                      <option value="B+">Grade B+ (Fair Average Quality)</option>
+                      <option value="A+">Grade A+ (प्रीमियम / निर्यात)</option>
+                      <option value="A">Grade A (मानक मिल ग्रेड)</option>
+                      <option value="B+">Grade B+ (औसत गुणवत्ता)</option>
                     </select>
                   </div>
                 </div>
@@ -1143,80 +1039,30 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsListCropModalOpen(false)}
-                    className="flex-1 py-3 px-4 rounded-full border-2 border-[#1B4332]/20 text-xs font-black uppercase tracking-wider text-[#4D6B53] hover:bg-[#F8FAF5]"
+                    className="flex-1 py-3.5 px-4 rounded-2xl border-2 border-[#1B4332]/25 text-xs font-black uppercase tracking-wider text-[#4D6B53] hover:bg-[#F8FAF5] min-h-[48px]"
                   >
-                    Cancel
+                    {isHindi ? 'रद्द करें' : 'Cancel'}
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-3 px-4 rounded-full bg-[#1B4332] text-white hover:bg-[#2D5A27] text-xs font-black uppercase tracking-wider shadow-xs"
+                    className="flex-1 py-3.5 px-4 rounded-2xl bg-[#1B4332] text-white hover:bg-[#2D5A27] text-xs font-black uppercase tracking-wider shadow-xs min-h-[48px] active:scale-98"
                   >
-                    Publish to Exchange
+                    {isHindi ? 'फसल बाज़ार में जोड़ें' : 'Publish Crop'}
                   </button>
                 </div>
               </form>
             </div>
           </div>
         )}
-
-        {/* MODAL 2: OFFER DETAILS MODAL */}
-        {selectedOffer && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#11281E]/60 backdrop-blur-xs">
-            <div className="bg-white w-full max-w-md rounded-[32px] border-2 border-[#1B4332] p-6 sm:p-8 shadow-xl">
-              <div className="flex items-center justify-between pb-4 border-b-2 border-[#1B4332]/10">
-                <h3 className="text-lg font-black uppercase tracking-tight text-[#11281E]">Buyer Proposal Details</h3>
-                <button onClick={() => setSelectedOffer(null)} className="p-1.5 text-[#4D6B53] hover:text-[#11281E]">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="mt-4 space-y-3 text-xs font-bold text-[#4D6B53]">
-                <div className="p-4 rounded-2xl bg-[#F8FAF5] border border-[#1B4332]/15">
-                  <span className="text-[10px] uppercase font-black tracking-wider text-[#8FA396] block">Buyer Company</span>
-                  <span className="text-base font-black text-[#11281E] block">{selectedOffer.company}</span>
-                  <span className="text-xs text-[#4D6B53]">Representative: {selectedOffer.buyerName}</span>
-                </div>
-
-                <div className="flex justify-between py-2 border-b border-[#1B4332]/10">
-                  <span>Requested Crop:</span>
-                  <span className="text-[#11281E] font-black">{selectedOffer.cropName}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-[#1B4332]/10">
-                  <span>Quantity:</span>
-                  <span className="text-[#11281E] font-black">{selectedOffer.quantityRequested} Quintals</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-[#1B4332]/10">
-                  <span>Offered Price:</span>
-                  <span className="text-base font-black text-[#1B4332]">₹{selectedOffer.offeredPrice} / Qtl</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-[#1B4332]/10">
-                  <span>Total Escrow Value:</span>
-                  <span className="text-base font-black text-[#11281E]">₹{(selectedOffer.offeredPrice * selectedOffer.quantityRequested).toLocaleString('en-IN')}</span>
-                </div>
-                <div className="py-2">
-                  <span className="block text-[#8FA396] text-[10px] uppercase font-black">Payment Terms:</span>
-                  <span className="text-[#2D5A27] font-black">{selectedOffer.paymentTerms}</span>
-                </div>
-              </div>
-
-              <div className="mt-6 pt-4 border-t-2 border-[#1B4332]/10 flex gap-3">
-                <button
-                  onClick={() => handleDeclineOffer(selectedOffer.id)}
-                  className="flex-1 py-3 rounded-full border-2 border-[#1B4332]/20 text-xs font-black uppercase tracking-wider text-[#4D6B53] hover:text-rose-700"
-                >
-                  Decline
-                </button>
-                <button
-                  onClick={() => handleAcceptOffer(selectedOffer.id)}
-                  className="flex-1 py-3 rounded-full bg-[#1B4332] text-white hover:bg-[#2D5A27] text-xs font-black uppercase tracking-wider"
-                >
-                  Accept & Lock Escrow
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
+
+      {/* Mobile Sticky Bottom Navigation for 1-thumb touch accessibility */}
+      <MobileBottomNav
+        currentTab={currentTab}
+        onTabChange={(tab) => setActiveTab(tab)}
+        currentUser={currentUser}
+        onQuickSell={() => setIsListCropModalOpen(true)}
+      />
     </div>
   );
 };

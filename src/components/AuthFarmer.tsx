@@ -10,9 +10,14 @@ import {
   ShieldCheck,
   Sparkles,
   KeyRound,
-  CheckCircle2
+  CheckCircle2,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { AppRoute, UserProfile } from '../types';
+import { loginWithFirebase, registerWithFirebase, loginDemoUser } from '../lib/firebase';
+import { useLanguage } from '../context/LanguageContext';
+import { useToast } from '../context/ToastContext';
 
 interface AuthFarmerProps {
   mode: 'login' | 'register';
@@ -26,6 +31,8 @@ export const AuthFarmer: React.FC<AuthFarmerProps> = ({
   onLoginSuccess,
 }) => {
   const isLogin = mode === 'login';
+  const { isHindi } = useLanguage();
+  const { showError } = useToast();
 
   // Form states
   const [phone, setPhone] = useState('');
@@ -36,32 +43,71 @@ export const AuthFarmer: React.FC<AuthFarmerProps> = ({
   const [authMethod, setAuthMethod] = useState<'password' | 'otp'>('password');
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalName = isLogin ? (name.trim() || 'Ramesh Kumar') : (name.trim() || 'Kisan User');
-    const finalLocation = location.trim() || 'Sehore, Madhya Pradesh';
+    setErrorMessage(null);
+    setLoading(true);
 
-    const user: UserProfile = {
-      name: finalName,
-      phone: phone || '9876543210',
-      role: 'farmer',
-      location: finalLocation,
-      specializationOrBusiness: primaryCrop || 'Wheat & Gram'
-    };
+    const finalPhone = phone.trim() || '9876543210';
+    const finalPassword = password || 'Farmer@1234';
 
-    onLoginSuccess(user);
+    try {
+      if (isLogin) {
+        const user = await loginWithFirebase(finalPhone, finalPassword, 'farmer');
+        onLoginSuccess(user);
+      } else {
+        const finalName = name.trim() || 'Kisan User';
+        const finalLocation = location.trim() || 'Sehore, Madhya Pradesh';
+
+        const user = await registerWithFirebase(finalPhone, finalPassword, {
+          name: finalName,
+          phone: finalPhone,
+          role: 'farmer',
+          location: finalLocation,
+          specializationOrBusiness: primaryCrop || 'Wheat & Gram',
+        });
+        onLoginSuccess(user);
+      }
+    } catch (err: any) {
+      console.error('Farmer Firebase Auth error:', err);
+      let msg = err?.message || 'Authentication error. Please try again.';
+      if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/user-not-found' || err?.code === 'auth/wrong-password') {
+        msg = isHindi ? 'गलत मोबाइल नंबर या पासवर्ड। कृपया पुनः जांचें।' : 'Invalid mobile number or password. Check credentials or try Instant Demo.';
+      } else if (err?.code === 'auth/email-already-in-use') {
+        msg = isHindi ? 'यह मोबाइल नंबर पहले से पंजीकृत है। कृपया लॉगिन करें।' : 'Mobile number already registered. Please sign in instead.';
+      } else if (err?.code === 'auth/weak-password') {
+        msg = isHindi ? 'पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।' : 'Password should be at least 6 characters.';
+      }
+      setErrorMessage(msg);
+      showError(isHindi ? 'प्रमाणीकरण त्रुटि' : 'Authentication Notice', msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDemoFarmerLogin = () => {
-    const demoUser: UserProfile = {
-      name: 'Ramesh Patel',
-      phone: '9826012345',
-      role: 'farmer',
-      location: 'Ujjain, Madhya Pradesh',
-      specializationOrBusiness: 'Wheat, Mustard & Chickpea'
-    };
-    onLoginSuccess(demoUser);
+  const handleDemoFarmerLogin = async () => {
+    setErrorMessage(null);
+    setLoading(true);
+    try {
+      const demoUser = await loginDemoUser('farmer');
+      onLoginSuccess(demoUser);
+    } catch (err: any) {
+      console.error('Demo login error:', err);
+      // Fallback local demo profile
+      const demoUser: UserProfile = {
+        name: 'Ramesh Patel',
+        phone: '9826012345',
+        role: 'farmer',
+        location: 'Ujjain, Madhya Pradesh',
+        specializationOrBusiness: 'Wheat, Mustard & Chickpea',
+      };
+      onLoginSuccess(demoUser);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -293,14 +339,31 @@ export const AuthFarmer: React.FC<AuthFarmerProps> = ({
               </div>
             )}
 
+            {errorMessage && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-rose-800 text-xs font-bold">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
             {/* Submit Button */}
             <button
               id="farmer-auth-submit-btn"
               type="submit"
-              className="w-full mt-2 py-4 bg-[#1B4332] hover:bg-[#2D5A27] text-white font-black text-xs uppercase tracking-wider rounded-full shadow-md shadow-[#1B4332]/20 transition-all flex items-center justify-center gap-2 border-2 border-[#1B4332]"
+              disabled={loading}
+              className="w-full mt-2 py-4 bg-[#1B4332] hover:bg-[#2D5A27] disabled:opacity-70 text-white font-black text-xs uppercase tracking-wider rounded-full shadow-md shadow-[#1B4332]/20 transition-all flex items-center justify-center gap-2 border-2 border-[#1B4332] cursor-pointer"
             >
-              <span>{isLogin ? 'Enter Farmer Dashboard / प्रवेश करें' : 'Complete Registration / खाता बनाएं'}</span>
-              <ArrowRight className="w-4 h-4" />
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Connecting with Firebase...</span>
+                </>
+              ) : (
+                <>
+                  <span>{isLogin ? 'Enter Farmer Dashboard / प्रवेश करें' : 'Complete Registration / खाता बनाएं'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
 

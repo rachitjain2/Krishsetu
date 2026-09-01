@@ -22,6 +22,7 @@ import {
   Info
 } from 'lucide-react';
 import { AICropAdvisorInput, AICropAdvisorResult } from '../types';
+import { saveAIRecommendation } from '../lib/firebase';
 
 interface AICropAdvisorProps {
   defaultLocation?: string;
@@ -154,6 +155,19 @@ export const AICropAdvisor: React.FC<AICropAdvisorProps> = ({ defaultLocation = 
       }
 
       setResult(json.data);
+      // Persist advisory to Firestore
+      try {
+        await saveAIRecommendation({
+          cropName: formData.cropName,
+          location: formData.location,
+          recommendation: json.data.recommendation,
+          confidenceScore: json.data.confidenceScore,
+          expectedPriceRange: json.data.expectedPriceRange,
+          advisorySummary: json.data.reasoning,
+        });
+      } catch (saveErr) {
+        console.warn('Persist recommendation notice:', saveErr);
+      }
     } catch (err: any) {
       console.error('Advisor fetch error:', err);
       setError(err?.message || 'Network communication error. Please verify your connection and try again.');

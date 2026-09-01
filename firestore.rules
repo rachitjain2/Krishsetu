@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // USERS COLLECTION
+    // Users can read other user profiles (e.g. for displaying verified farmer/buyer details),
+    // but can only write to their own profile document.
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // CROP LISTINGS COLLECTION
+    // Public/Authenticated can read active listings in marketplace.
+    // Farmers can create, update, or delete their own crop listings.
+    // Buyers can update inquiries count / offers on listings when bidding.
+    match /cropListings/{listingId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.farmerUid == request.auth.uid ||
+        resource.data.farmerUid == null ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inquiriesCount', 'bestOfferPerQuintal', 'status'])
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.farmerUid == request.auth.uid ||
+        resource.data.farmerUid == null
+      );
+    }
+
+    // ORDERS COLLECTION
+    // Buyers and Farmers participating in an order can read and manage it.
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.buyerUid == request.auth.uid ||
+        resource.data.farmerUid == request.auth.uid ||
+        resource.data.buyerUid == null ||
+        resource.data.farmerUid == null
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.buyerUid == request.auth.uid ||
+        resource.data.farmerUid == request.auth.uid
+      );
+    }
+
+    // MACHINERY COLLECTION
+    // Available machinery can be browsed by all users.
+    // Owners can create, update, or delete machinery.
+    match /machinery/{machineId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && (
+        resource.data.ownerUid == request.auth.uid ||
+        resource.data.ownerUid == null
+      );
+    }
+
+    // RENTAL REQUESTS COLLECTION
+    // Farmers and machine owners can manage booking workflows.
+    match /rentalRequests/{requestId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && (
+        resource.data.farmerUid == request.auth.uid ||
+        resource.data.ownerUid == request.auth.uid
+      );
+    }
+
+    // AI RECOMMENDATIONS COLLECTION
+    // Farmers can save and read their own crop advisor recommendations.
+    match /aiRecommendations/{recommendationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userUid == request.auth.uid ||
+        resource.data.userId == request.auth.uid
+      );
+      allow create: if isAuthenticated() && (
+        request.resource.data.userUid == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update, delete: if isAuthenticated() && (
+        resource.data.userUid == request.auth.uid ||
+        resource.data.userId == request.auth.uid
+      );
+    }
+  }
+}

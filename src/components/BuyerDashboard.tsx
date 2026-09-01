@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Building2,
   Store,
@@ -24,7 +24,11 @@ import { AppRoute, UserProfile, CropListing, Order } from '../types';
 import { Marketplace } from './Marketplace';
 import { BuyerOrders } from './BuyerOrders';
 import { MarketIntelligence } from './MarketIntelligence';
+import { MobileBottomNav } from './common/MobileBottomNav';
 import { INITIAL_MARKETPLACE_CROPS } from '../data/marketplaceData';
+import { useLanguage } from '../context/LanguageContext';
+import { useToast } from '../context/ToastContext';
+import { subscribeToCropListings } from '../lib/firebase';
 
 interface BuyerDashboardProps {
   currentUser: UserProfile | null;
@@ -46,6 +50,20 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [crops, setCrops] = useState<CropListing[]>(INITIAL_MARKETPLACE_CROPS);
+
+  useEffect(() => {
+    const unsub = subscribeToCropListings((updated) => {
+      if (updated && updated.length > 0) {
+        setCrops(updated);
+      }
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
+
+  const { isHindi } = useLanguage();
+  const { showSuccess, showInfo } = useToast();
 
   // Buyer bids state
   const [bids, setBids] = useState<Array<{
@@ -110,8 +128,11 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
     };
 
     setBids([newBid, ...bids]);
-    // update crop status to 'Under Offer'
     setCrops(crops.map(c => c.id === cropId ? { ...c, status: 'Under Offer', inquiriesCount: (c.inquiriesCount || 0) + 1 } : c));
+    showSuccess(
+      isHindi ? 'बोली / प्रस्ताव भेजा गया!' : 'Offer Submitted!',
+      isHindi ? `किसान ${newBid.farmerName} को ₹${offeredPrice}/क्विंटल का प्रस्ताव भेजा गया है।` : `Sent bid of ₹${offeredPrice}/Qtl to ${newBid.farmerName}.`
+    );
   };
 
   // Handle Place Order from marketplace
@@ -128,7 +149,7 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
     .reduce((acc, o) => acc + o.quantity, 0);
 
   return (
-    <div className="min-h-[calc(100vh-5rem)] bg-[#F8FAF5] flex flex-col md:flex-row">
+    <div className="min-h-[calc(100vh-5rem)] bg-[#F8FAF5] flex flex-col md:flex-row pb-20 md:pb-8">
       {/* Reusable Sidebar Component */}
       <Sidebar
         role="buyer"
@@ -146,35 +167,44 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
         {/* Mobile Header with Sidebar Toggle */}
         <div className="md:hidden flex items-center justify-between bg-white p-4 rounded-2xl border-2 border-[#1B4332]/15 mb-4 shadow-xs">
           <div className="flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-[#1B4332]" />
-            <span className="font-black uppercase tracking-wider text-xs text-[#11281E]">Buyer Hub Menu</span>
+            <Building2 className="w-6 h-6 text-[#1B4332]" />
+            <div>
+              <span className="font-black uppercase tracking-wider text-xs text-[#11281E] block">
+                {isHindi ? 'व्यापारी खरीद केंद्र' : 'Buyer Hub Menu'}
+              </span>
+              <span className="text-[10px] text-[#4D6B53] font-bold">
+                {isHindi ? 'कृषि सेतु - प्रत्यक्ष खरीद' : 'KrishiSetu Direct Sourcing'}
+              </span>
+            </div>
           </div>
           <button
             id="buyer-dashboard-menu-open-btn"
             onClick={() => setMobileSidebarOpen(true)}
-            className="py-2 px-3 bg-[#1B4332] text-[#E8D5B5] rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 border border-[#1B4332] cursor-pointer"
+            className="py-2.5 px-4 bg-[#1B4332] text-[#FAF3E0] rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-2 border border-[#1B4332] min-h-[44px]"
           >
             <Menu className="w-4 h-4" />
-            <span>Open Menu</span>
+            <span>{isHindi ? 'मेनू' : 'Menu'}</span>
           </button>
         </div>
 
         {/* Buyer Welcome Header Banner */}
         <div className="bg-[#1B4332] text-white rounded-[32px] p-6 sm:p-8 shadow-md mb-6 relative overflow-hidden border-2 border-[#1B4332]">
           <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#2D5A27] text-[#E8D5B5] text-[10px] font-black uppercase tracking-widest mb-3 border border-[#E8D5B5]/30">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#E8D5B5]" />
-              <span>Verified Wholesale Buyer • प्रमाणित खरीदार</span>
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#2D5A27] text-[#FAF3E0] text-xs font-black uppercase tracking-wider mb-3 border border-[#FAF3E0]/30">
+              <ShieldCheck className="w-4 h-4 text-[#FAF3E0]" />
+              <span>{isHindi ? 'प्रमाणित थोक खरीदार (Verified Buyer)' : 'Verified Wholesale Buyer'}</span>
             </div>
             <h1 className="text-2xl sm:text-4xl font-black text-white uppercase tracking-tight">
-              Welcome, {buyerName}!
+              {isHindi ? `स्वागत है, ${buyerName}!` : `Welcome, ${buyerName}!`}
             </h1>
-            <p className="mt-2 text-xs sm:text-sm text-[#E8D5B5] font-bold max-w-2xl">
-              Source harvest batches directly from verified farmer clusters with zero intermediary markups.
+            <p className="mt-2 text-xs sm:text-sm text-[#FAF3E0] font-bold max-w-2xl">
+              {isHindi 
+                ? 'सीधे सत्यापित किसान समूहों से ताजा फसल खरीदें, गुणवत्ता रिपोर्ट देखें और सुरक्षित एस्क्रो द्वारा भुगतान करें।'
+                : 'Source harvest batches directly from verified farmer clusters with zero intermediary markups.'}
             </p>
-            <p className="mt-2 text-xs text-[#D8E6D3] font-bold flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-[#E8D5B5]" />
-              <span>{location} • Active Direct Sourcing Exchange</span>
+            <p className="mt-3 text-xs text-[#D8E6D3] font-bold flex items-center gap-1.5">
+              <MapPin className="w-4 h-4 text-[#FAF3E0]" />
+              <span>{location} • {isHindi ? 'सक्रिय सीधा कृषि विनिमय' : 'Active Direct Sourcing Exchange'}</span>
             </p>
           </div>
 
@@ -191,95 +221,117 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
               <div 
                 id="buyer-metric-orders"
                 onClick={() => setActiveTab('my-orders')}
-                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all"
+                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all min-h-[110px]"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-black text-[#4D6B53] uppercase tracking-widest">Active Orders</span>
-                  <div className="w-9 h-9 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center border border-[#1B4332]/15">
+                  <span className="text-xs font-black text-[#4D6B53] uppercase tracking-wider">
+                    {isHindi ? 'सक्रिय खरीद ऑर्डर' : 'Active Orders'}
+                  </span>
+                  <div className="w-10 h-10 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center border border-[#1B4332]/15">
                     <ShoppingBag className="w-5 h-5" />
                   </div>
                 </div>
-                <div className="text-2xl font-black uppercase tracking-tight text-[#11281E]">{activeOrdersCount} Active</div>
+                <div className="text-2xl font-black uppercase tracking-tight text-[#11281E]">
+                  {activeOrdersCount} {isHindi ? 'चालू' : 'Active'}
+                </div>
                 <p className="text-xs text-[#2D5A27] mt-1 font-black uppercase tracking-wider">
-                  {activeOrdersVolume} Quintals in pipeline
+                  {activeOrdersVolume} {isHindi ? 'क्विंटल माल प्रक्रिया में' : 'Quintals in pipeline'}
                 </p>
               </div>
 
               <div 
                 id="buyer-metric-bids"
                 onClick={() => setActiveTab('bids')}
-                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all"
+                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all min-h-[110px]"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-black text-[#4D6B53] uppercase tracking-widest">Open Farm Bids</span>
-                  <div className="w-9 h-9 rounded-xl bg-[#FAF3E0] text-[#8C6228] flex items-center justify-center border border-[#E8D5B5]">
+                  <span className="text-xs font-black text-[#4D6B53] uppercase tracking-wider">
+                    {isHindi ? 'सीधी बोलियां / मोलभाव' : 'Open Farm Bids'}
+                  </span>
+                  <div className="w-10 h-10 rounded-xl bg-[#FAF3E0] text-[#8C6228] flex items-center justify-center border border-[#E8D5B5]">
                     <TrendingUp className="w-5 h-5" />
                   </div>
                 </div>
-                <div className="text-2xl font-black uppercase tracking-tight text-[#11281E]">{bids.length} Active Bids</div>
-                <p className="text-xs text-[#8C6228] mt-1 font-black uppercase tracking-wider">Direct negotiation</p>
+                <div className="text-2xl font-black uppercase tracking-tight text-[#11281E]">
+                  {bids.length} {isHindi ? 'सक्रिय बोलियां' : 'Active Bids'}
+                </div>
+                <p className="text-xs text-[#8C6228] mt-1 font-black uppercase tracking-wider">
+                  {isHindi ? 'सीधी किसान बातचीत' : 'Direct negotiation'}
+                </p>
               </div>
 
               <div 
                 id="buyer-metric-farmers"
                 onClick={() => setActiveTab('verified-farmers')}
-                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all"
+                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all min-h-[110px]"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-black text-[#4D6B53] uppercase tracking-widest">Connected Farmers</span>
-                  <div className="w-9 h-9 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center border border-[#1B4332]/15">
+                  <span className="text-xs font-black text-[#4D6B53] uppercase tracking-wider">
+                    {isHindi ? 'सत्यापित किसान समूह' : 'Connected Farmers'}
+                  </span>
+                  <div className="w-10 h-10 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center border border-[#1B4332]/15">
                     <Users className="w-5 h-5" />
                   </div>
                 </div>
-                <div className="text-2xl font-black uppercase tracking-tight text-[#11281E]">18 Farm FPOs</div>
-                <p className="text-xs text-[#2D5A27] mt-1 font-black uppercase tracking-wider">Across Central India</p>
+                <div className="text-2xl font-black uppercase tracking-tight text-[#11281E]">
+                  18 {isHindi ? 'एफपीओ समितियां' : 'Farm FPOs'}
+                </div>
+                <p className="text-xs text-[#2D5A27] mt-1 font-black uppercase tracking-wider">
+                  {isHindi ? 'मध्य भारत क्षेत्र' : 'Across Central India'}
+                </p>
               </div>
 
               <div 
                 id="buyer-metric-logistics"
                 onClick={() => setActiveTab('browse-produce')}
-                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all"
+                className="bg-white p-5 rounded-[24px] border-2 border-[#1B4332]/15 shadow-xs hover:border-[#1B4332] cursor-pointer transition-all min-h-[110px]"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-black text-[#4D6B53] uppercase tracking-widest">Live Exchange</span>
-                  <div className="w-9 h-9 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center border border-[#1B4332]/15">
+                  <span className="text-xs font-black text-[#4D6B53] uppercase tracking-wider">
+                    {isHindi ? 'उपलब्ध स्टॉक' : 'Live Exchange'}
+                  </span>
+                  <div className="w-10 h-10 rounded-xl bg-[#E8F0E5] text-[#1B4332] flex items-center justify-center border border-[#1B4332]/15">
                     <Store className="w-5 h-5" />
                   </div>
                 </div>
-                <div className="text-2xl font-black uppercase tracking-tight text-[#11281E]">{crops.length} Batches</div>
-                <p className="text-xs text-[#2D5A27] mt-1 font-black uppercase tracking-wider">Explore Marketplace →</p>
+                <div className="text-2xl font-black uppercase tracking-tight text-[#11281E]">
+                  {crops.length} {isHindi ? 'फसल लॉट' : 'Batches'}
+                </div>
+                <p className="text-xs text-[#2D5A27] mt-1 font-black uppercase tracking-wider">
+                  {isHindi ? 'बाज़ार ब्राउज़ करें →' : 'Explore Marketplace →'}
+                </p>
               </div>
             </div>
 
             {/* Quick Sourcing Marketplace Preview */}
-            <div className="bg-white p-6 sm:p-7 rounded-[32px] border-2 border-[#1B4332]/15 shadow-xs">
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="font-black uppercase tracking-tight text-base text-[#11281E] flex items-center gap-2">
-                  <Store className="w-5 h-5 text-[#1B4332]" />
-                  <span>Featured Farm Batches for Immediate Procurement (उपलब्ध फसलें)</span>
+            <div className="bg-white p-6 sm:p-8 rounded-[32px] border-2 border-[#1B4332]/15 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b-2 border-[#1B4332]/10">
+                <h3 className="font-black uppercase tracking-tight text-lg text-[#11281E] flex items-center gap-2">
+                  <Store className="w-6 h-6 text-[#1B4332]" />
+                  <span>{isHindi ? 'तुरंत खरीद के लिए उपलब्ध फसल लॉट' : 'Featured Farm Batches for Procurement'}</span>
                 </h3>
                 <button 
                   onClick={() => setActiveTab('browse-produce')}
-                  className="text-xs font-black uppercase tracking-wider text-[#1B4332] hover:underline cursor-pointer flex items-center gap-1"
+                  className="py-2.5 px-4 text-xs font-black uppercase tracking-wider text-[#1B4332] bg-[#E8F0E5] hover:bg-[#1B4332] hover:text-white rounded-full transition-colors cursor-pointer flex items-center gap-1.5 w-fit min-h-[40px]"
                 >
-                  <span>Explore All {crops.length} Batches</span>
+                  <span>{isHindi ? `सभी ${crops.length} लॉट देखें` : `Explore All ${crops.length} Batches`}</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {crops.slice(0, 3).map((crop) => (
-                  <div key={crop.id} className="p-4 rounded-2xl bg-[#F8FAF5] border-2 border-[#1B4332]/15 flex flex-col justify-between hover:border-[#1B4332] transition-all">
+                  <div key={crop.id} className="p-5 rounded-2xl bg-[#F8FAF5] border-2 border-[#1B4332]/15 flex flex-col justify-between hover:border-[#1B4332] transition-all">
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[9px] font-black uppercase tracking-wider text-[#1B4332] bg-[#E8F0E5] px-2 py-0.5 rounded-full border border-[#1B4332]/20">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[#1B4332] bg-[#E8F0E5] px-2.5 py-0.5 rounded-full border border-[#1B4332]/20">
                           {crop.category}
                         </span>
                         <span className="text-xs font-bold text-[#8FA396]">{crop.location.split(',')[0]}</span>
                       </div>
-                      <h4 className="font-black text-[#11281E] text-sm uppercase">{crop.cropName}</h4>
+                      <h4 className="font-black text-[#11281E] text-base uppercase">{crop.cropName}</h4>
                       <p className="text-xs text-[#4D6B53] font-bold mt-1">
-                        Farmer: {crop.farmerName || 'Verified Kisan'} • {crop.quantity} {crop.unit}
+                        {isHindi ? 'किसान:' : 'Farmer:'} {crop.farmerName || 'Verified Kisan'} • {crop.quantity} {crop.unit}
                       </p>
                     </div>
                     <div className="mt-4 pt-3 border-t border-[#1B4332]/10 flex items-center justify-between">
@@ -288,9 +340,9 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
                       </span>
                       <button 
                         onClick={() => setActiveTab('browse-produce')}
-                        className="text-xs bg-[#1B4332] text-white px-3.5 py-1.5 rounded-full font-black uppercase tracking-wider hover:bg-[#2D5A27] border border-[#1B4332] cursor-pointer"
+                        className="text-xs bg-[#1B4332] text-white px-4 py-2.5 rounded-full font-black uppercase tracking-wider hover:bg-[#2D5A27] border border-[#1B4332] cursor-pointer min-h-[40px]"
                       >
-                        View Details
+                        {isHindi ? 'विवरण देखें' : 'View Details'}
                       </button>
                     </div>
                   </div>
@@ -300,7 +352,7 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
           </div>
         )}
 
-        {/* TAB 2: DIRECT MARKETPLACE (FULL BROWSE PRODUCE EXPERIENCE) */}
+        {/* TAB 2: DIRECT MARKETPLACE */}
         {activeTab === 'browse-produce' && (
           <Marketplace
             currentUser={currentUser}
@@ -310,7 +362,7 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
           />
         )}
 
-        {/* TAB 3: PROCUREMENT ORDERS (BUYER ORDERS PAGE) */}
+        {/* TAB 3: PROCUREMENT ORDERS */}
         {activeTab === 'my-orders' && (
           <BuyerOrders
             orders={orders}
@@ -328,18 +380,20 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <TrendingUp className="w-6 h-6 text-[#1B4332]" />
-                    <h2 className="text-2xl font-black uppercase tracking-tight text-[#11281E]">Direct Farm Bids (सीधी बोली व बातचीत)</h2>
+                    <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-[#11281E]">
+                      {isHindi ? 'सीधी बोली व मोलभाव' : 'Direct Farm Bids'}
+                    </h2>
                   </div>
                   <p className="text-xs text-[#4D6B53] font-bold mt-1">
-                    Transparent price discovery directly between your business and farm clusters.
+                    {isHindi ? 'किसान समूहों के साथ पारदर्शी और सीधी मूल्य बातचीत।' : 'Transparent price discovery directly between your business and farm clusters.'}
                   </p>
                 </div>
                 <button
                   onClick={() => setActiveTab('browse-produce')}
-                  className="py-2.5 px-5 bg-[#1B4332] text-white hover:bg-[#2D5A27] rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer"
+                  className="py-3 px-5 bg-[#1B4332] text-white hover:bg-[#2D5A27] rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer min-h-[44px]"
                 >
                   <DollarSign className="w-4 h-4" />
-                  <span>Make New Crop Offer</span>
+                  <span>{isHindi ? 'नया फसल प्रस्ताव दें' : 'Make New Crop Offer'}</span>
                 </button>
               </div>
 
@@ -357,17 +411,19 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
                         <h4 className="font-black uppercase tracking-tight text-[#11281E] text-base mt-2">
                           {bid.cropName} ({bid.quantity} {bid.unit})
                         </h4>
-                        <p className="text-xs text-[#4D6B53] font-bold">Farmer: {bid.farmerName} • Submitted on {bid.date}</p>
+                        <p className="text-xs text-[#4D6B53] font-bold">{isHindi ? 'किसान:' : 'Farmer:'} {bid.farmerName} • {bid.date}</p>
                       </div>
 
                       <div className="text-left md:text-right">
                         <div className="text-xs text-[#4D6B53] font-bold">
-                          Asking: <span className="line-through">₹{bid.askingPrice}</span>
+                          {isHindi ? 'किसान मांग:' : 'Asking:'} <span className="line-through">₹{bid.askingPrice}</span>
                         </div>
                         <div className="text-xl font-black text-[#1B4332]">
-                          Your Offer: ₹{bid.offeredPrice.toLocaleString('en-IN')} / {bid.unit ? bid.unit.replace(/s$/, '') : 'Qtl'}
+                          {isHindi ? 'आपका प्रस्ताव:' : 'Your Offer:'} ₹{bid.offeredPrice.toLocaleString('en-IN')} / {bid.unit ? bid.unit.replace(/s$/, '') : 'Qtl'}
                         </div>
-                        <span className="text-xs font-bold text-[#8C6228]">Total: ₹{(bid.offeredPrice * bid.quantity).toLocaleString('en-IN')}</span>
+                        <span className="text-xs font-bold text-[#8C6228]">
+                          {isHindi ? 'कुल राशि:' : 'Total:'} ₹{(bid.offeredPrice * bid.quantity).toLocaleString('en-IN')}
+                        </span>
                       </div>
                     </div>
 
@@ -395,39 +451,47 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
               <div className="pb-6 border-b-2 border-[#1B4332]/10">
                 <div className="flex items-center gap-2">
                   <Users className="w-6 h-6 text-[#1B4332]" />
-                  <h2 className="text-2xl font-black uppercase tracking-tight text-[#11281E]">Verified Farmer Directory (प्रमाणित किसान)</h2>
+                  <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-[#11281E]">
+                    {isHindi ? 'प्रमाणित किसान व एफपीओ सूची' : 'Verified Farmer Directory'}
+                  </h2>
                 </div>
-                <p className="text-xs text-[#4D6B53] font-bold mt-1">Build long-term direct sourcing relationships with certified grower cooperatives.</p>
+                <p className="text-xs text-[#4D6B53] font-bold mt-1">
+                  {isHindi ? 'प्रमाणित किसान सहकारी समितियों से दीर्घकालिक आपूर्ति संबंध स्थापित करें।' : 'Build long-term direct sourcing relationships with certified grower cooperatives.'}
+                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
                 <div className="p-6 rounded-[28px] border-2 border-[#1B4332]/15 bg-[#F8FAF5] space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-[#1B4332] bg-[#E8F0E5] px-2.5 py-0.5 rounded-full border border-[#1B4332]/20">FPO Cooperative</span>
-                    <span className="text-xs font-bold text-[#8FA396]">240 Members</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[#1B4332] bg-[#E8F0E5] px-2.5 py-0.5 rounded-full border border-[#1B4332]/20">
+                      {isHindi ? 'एफपीओ सहकारी समिति' : 'FPO Cooperative'}
+                    </span>
+                    <span className="text-xs font-bold text-[#8FA396]">240 {isHindi ? 'किसान सदस्य' : 'Members'}</span>
                   </div>
                   <h4 className="font-black uppercase tracking-tight text-[#11281E] text-base">Malwa Kisan Producer Org</h4>
                   <p className="text-xs text-[#4D6B53] font-bold">Ujjain, MP • Wheat, Soybean, Garlic</p>
                   <button
                     onClick={() => setActiveTab('browse-produce')}
-                    className="w-full py-2 px-3 bg-white text-[#1B4332] hover:bg-[#E8F0E5] rounded-full text-xs font-black uppercase tracking-wider border border-[#1B4332]/20"
+                    className="w-full py-3 px-4 bg-white text-[#1B4332] hover:bg-[#E8F0E5] rounded-2xl text-xs font-black uppercase tracking-wider border-2 border-[#1B4332]/20 min-h-[44px]"
                   >
-                    View Harvest Batches
+                    {isHindi ? 'उपलब्ध फसल लॉट देखें' : 'View Harvest Batches'}
                   </button>
                 </div>
 
                 <div className="p-6 rounded-[28px] border-2 border-[#1B4332]/15 bg-[#F8FAF5] space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-[#1B4332] bg-[#E8F0E5] px-2.5 py-0.5 rounded-full border border-[#1B4332]/20">Individual Grower</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[#1B4332] bg-[#E8F0E5] px-2.5 py-0.5 rounded-full border border-[#1B4332]/20">
+                      {isHindi ? 'व्यक्तिगत किसान' : 'Individual Grower'}
+                    </span>
                     <span className="text-xs font-bold text-[#8FA396]">25 Acres</span>
                   </div>
                   <h4 className="font-black uppercase tracking-tight text-[#11281E] text-base">Ramesh Patel & Sons Farm</h4>
                   <p className="text-xs text-[#4D6B53] font-bold">Ujjain, MP • Certified Sharbati Wheat</p>
                   <button
                     onClick={() => setActiveTab('browse-produce')}
-                    className="w-full py-2 px-3 bg-white text-[#1B4332] hover:bg-[#E8F0E5] rounded-full text-xs font-black uppercase tracking-wider border border-[#1B4332]/20"
+                    className="w-full py-3 px-4 bg-white text-[#1B4332] hover:bg-[#E8F0E5] rounded-2xl text-xs font-black uppercase tracking-wider border-2 border-[#1B4332]/20 min-h-[44px]"
                   >
-                    View Harvest Batches
+                    {isHindi ? 'उपलब्ध फसल लॉट देखें' : 'View Harvest Batches'}
                   </button>
                 </div>
               </div>
@@ -435,8 +499,13 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
           </div>
         )}
       </main>
+
+      {/* Mobile Sticky Bottom Navigation */}
+      <MobileBottomNav
+        currentTab={activeTab}
+        onTabChange={(tab) => setActiveTab(tab)}
+        currentUser={currentUser}
+      />
     </div>
   );
 };
-
-

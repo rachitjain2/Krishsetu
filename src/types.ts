@@ -11,12 +11,15 @@ export type AppRoute =
 export type UserRole = 'farmer' | 'buyer' | null;
 
 export interface UserProfile {
+  uid?: string;
   name: string;
   phone: string;
   email?: string;
   role: 'farmer' | 'buyer';
   location: string;
   specializationOrBusiness?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type FarmerDashboardTab =
@@ -32,6 +35,7 @@ export type FarmerDashboardTab =
 
 export interface CropListing {
   id: string;
+  farmerUid?: string;
   cropName: string;
   hindiName?: string;
   category: string;
@@ -57,6 +61,8 @@ export interface CropListing {
   bestOfferPerQuintal?: number;
   clusterLocation?: string;
   certification?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type OrderStatus =
@@ -76,6 +82,8 @@ export interface OrderStatusHistory {
 
 export interface Order {
   id: string;
+  buyerUid?: string;
+  farmerUid?: string;
   buyer: {
     name: string;
     phone: string;
@@ -122,6 +130,8 @@ export interface Order {
   };
   escrowStatus: 'Escrow Protected' | 'Payment Released' | 'Refunded' | 'Pending Deposit';
   notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FarmerOrder {
@@ -205,6 +215,7 @@ export interface MachineSpecs {
 
 export interface MachineItem {
   id: string;
+  ownerUid?: string;
   name: string;
   hindiName?: string;
   type: MachineType;
@@ -225,6 +236,7 @@ export interface MachineItem {
   description: string;
   features: string[];
   termsAndConditions: string[];
+  createdAt?: string;
 }
 
 export type RentalStatus = 'Pending' | 'Accepted' | 'Active' | 'Completed' | 'Cancelled';
@@ -237,6 +249,8 @@ export interface RentalStatusHistory {
 
 export interface RentalRequest {
   id: string;
+  farmerUid?: string;
+  ownerUid?: string;
   machineId: string;
   machineName: string;
   machineType: MachineType;
@@ -256,6 +270,19 @@ export interface RentalRequest {
   requestedAt: string;
   notes?: string;
   statusHistory: RentalStatusHistory[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AIRecommendationRecord {
+  id: string;
+  userUid: string;
+  farmerName: string;
+  cropName: string;
+  location: string;
+  inputData: AICropAdvisorInput;
+  result: AICropAdvisorResult;
+  createdAt: string;
 }
 
 // MARKET INTELLIGENCE TYPES

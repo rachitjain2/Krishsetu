@@ -1,0 +1,142 @@
+{
+  "entities": {
+    "UserProfile": {
+      "collection": "users",
+      "fields": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "description": "Full name of the farmer or contact person of buyer" },
+        "phone": { "type": "string", "description": "Mobile phone number" },
+        "email": { "type": "string", "description": "User email address" },
+        "role": { "type": "string", "description": "'farmer' or 'buyer'" },
+        "location": { "type": "string", "description": "Primary farm or business operating city/state" },
+        "specializationOrBusiness": { "type": "string", "description": "Primary crops or company name / GSTIN" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of registration" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+      }
+    },
+    "CropListing": {
+      "collection": "cropListings",
+      "fields": {
+        "id": { "type": "string", "description": "Unique listing identifier" },
+        "farmerUid": { "type": "string", "description": "UID of the owning farmer" },
+        "farmerName": { "type": "string", "description": "Name of the farmer" },
+        "farmerPhone": { "type": "string", "description": "Contact number" },
+        "cropName": { "type": "string", "description": "Name of the crop in English" },
+        "hindiName": { "type": "string", "description": "Name of the crop in Hindi" },
+        "category": { "type": "string", "description": "Category (e.g. Grains & Cereals, Oilseeds)" },
+        "variety": { "type": "string", "description": "Seed variety" },
+        "quantity": { "type": "number", "description": "Available harvest quantity" },
+        "unit": { "type": "string", "description": "Unit (Quintals, Kg, Tonnes)" },
+        "expectedPrice": { "type": "number", "description": "Asking price per unit in INR" },
+        "location": { "type": "string", "description": "Mandi or farm cluster location" },
+        "harvestDate": { "type": "string", "description": "Harvest date" },
+        "qualityGrade": { "type": "string", "description": "Quality assessment grade" },
+        "description": { "type": "string", "description": "Quality notes and moisture details" },
+        "status": { "type": "string", "description": "'Active', 'Under Offer', or 'Sold'" },
+        "imageUrl": { "type": "string", "description": "Crop photo URL" },
+        "moisturePercent": { "type": "number", "description": "Moisture percentage" },
+        "mandiBenchmarkPrice": { "type": "number", "description": "Current APMC mandi benchmark price in INR" },
+        "inquiriesCount": { "type": "number", "description": "Count of buyer inquiries" },
+        "bestOfferPerQuintal": { "type": "number", "description": "Highest offer received" },
+        "clusterLocation": { "type": "string", "description": "FPO / Farmer cluster name" },
+        "certification": { "type": "string", "description": "Organic / Quality certification details" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Update timestamp" }
+      }
+    },
+    "Order": {
+      "collection": "orders",
+      "fields": {
+        "id": { "type": "string", "description": "Unique Order ID" },
+        "buyerUid": { "type": "string", "description": "UID of the buyer" },
+        "farmerUid": { "type": "string", "description": "UID of the farmer" },
+        "buyer": { "type": "map", "description": "Buyer details: name, phone, company, email, location, deliveryAddress" },
+        "farmer": { "type": "map", "description": "Farmer details: name, phone, location, cluster, rating" },
+        "crop": { "type": "map", "description": "Crop summary: id, name, hindiName, category, variety, qualityGrade, imageUrl" },
+        "quantity": { "type": "number", "description": "Quantity purchased" },
+        "unit": { "type": "string", "description": "Unit of quantity" },
+        "price": { "type": "number", "description": "Agreed price per unit in INR" },
+        "totalAmount": { "type": "number", "description": "Total order amount in INR" },
+        "location": { "type": "map", "description": "Pickup location and delivery address" },
+        "orderDate": { "type": "string", "description": "Date order placed" },
+        "status": { "type": "string", "description": "'Pending', 'Accepted', 'In Transit', 'Completed', 'Rejected', 'Cancelled'" },
+        "statusHistory": { "type": "list", "description": "Audit trail of status events" },
+        "deliveryDetails": { "type": "map", "description": "Logistics dispatch details (vehicle, driver, dates)" },
+        "escrowStatus": { "type": "string", "description": "'Escrow Protected', 'Payment Released', 'Refunded', 'Pending Deposit'" },
+        "notes": { "type": "string", "description": "Special order instructions" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Update timestamp" }
+      }
+    },
+    "Machinery": {
+      "collection": "machinery",
+      "fields": {
+        "id": { "type": "string", "description": "Unique Machine ID" },
+        "ownerUid": { "type": "string", "description": "UID of the machinery owner / FPO" },
+        "name": { "type": "string", "description": "Machine title & model" },
+        "hindiName": { "type": "string", "description": "Hindi label" },
+        "type": { "type": "string", "description": "'Tractor', 'Harvester', 'Seed Drill', 'Cultivator', 'Rotavator', 'Sprayer'" },
+        "imageUrl": { "type": "string", "description": "Machine image URL" },
+        "ownerName": { "type": "string", "description": "Owner / FPO name" },
+        "ownerPhone": { "type": "string", "description": "Owner contact number" },
+        "ownerRating": { "type": "number", "description": "Owner review rating" },
+        "totalBookings": { "type": "number", "description": "Total completed bookings" },
+        "location": { "type": "string", "description": "Operational village / mandi area" },
+        "distanceKm": { "type": "number", "description": "Distance in km" },
+        "pricePerHour": { "type": "number", "description": "Rental price per hour in INR" },
+        "rateUnit": { "type": "string", "description": "Rate unit" },
+        "availability": { "type": "string", "description": "'Available Now', 'Available Today', 'Booked Today', 'Available Tomorrow'" },
+        "rating": { "type": "number", "description": "Machine condition rating" },
+        "reviewsCount": { "type": "number", "description": "Number of reviews" },
+        "specs": { "type": "map", "description": "Horsepower, fuel type, operator inclusion, working width" },
+        "attachments": { "type": "list", "description": "Compatible attachments included" },
+        "description": { "type": "string", "description": "Overview of equipment" },
+        "features": { "type": "list", "description": "Key machine highlights" },
+        "termsAndConditions": { "type": "list", "description": "Rental terms" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      }
+    },
+    "RentalRequest": {
+      "collection": "rentalRequests",
+      "fields": {
+        "id": { "type": "string", "description": "Rental Booking ID" },
+        "farmerUid": { "type": "string", "description": "UID of the farmer renting the machine" },
+        "ownerUid": { "type": "string", "description": "UID of the machine owner" },
+        "machineId": { "type": "string", "description": "Referenced machine ID" },
+        "machineName": { "type": "string", "description": "Name of machine" },
+        "machineType": { "type": "string", "description": "Type of machine" },
+        "machineImage": { "type": "string", "description": "Machine image URL" },
+        "ownerName": { "type": "string", "description": "Owner name" },
+        "ownerPhone": { "type": "string", "description": "Owner phone" },
+        "farmerName": { "type": "string", "description": "Renting farmer name" },
+        "farmerPhone": { "type": "string", "description": "Renting farmer phone" },
+        "farmerLocation": { "type": "string", "description": "Field location" },
+        "date": { "type": "string", "description": "Rental work date" },
+        "startTime": { "type": "string", "description": "Start time" },
+        "durationHours": { "type": "number", "description": "Booked hours" },
+        "pricePerHour": { "type": "number", "description": "Hourly rate" },
+        "estimatedCost": { "type": "number", "description": "Total estimated cost" },
+        "location": { "type": "string", "description": "Work site address" },
+        "status": { "type": "string", "description": "'Pending', 'Accepted', 'Active', 'Completed', 'Cancelled'" },
+        "requestedAt": { "type": "string", "description": "Timestamp when booking requested" },
+        "notes": { "type": "string", "description": "Field notes or special equipment requirements" },
+        "statusHistory": { "type": "list", "description": "Status progression timeline" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Update timestamp" }
+      }
+    },
+    "AIRecommendation": {
+      "collection": "aiRecommendations",
+      "fields": {
+        "id": { "type": "string", "description": "Unique Advisory Record ID" },
+        "userUid": { "type": "string", "description": "UID of the farmer requesting advisory" },
+        "farmerName": { "type": "string", "description": "Farmer name" },
+        "cropName": { "type": "string", "description": "Analyzed crop" },
+        "location": { "type": "string", "description": "Farm location" },
+        "inputData": { "type": "map", "description": "Input parameters sent to AI advisor" },
+        "result": { "type": "map", "description": "AI analysis output: summary, demandLevel, sellingRecommendation, reasoning, suggestions" },
+        "createdAt": { "type": "string", "description": "Timestamp of advisory generation" }
+      }
+    }
+  }
+}
