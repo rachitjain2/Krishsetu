@@ -358,12 +358,12 @@ export const BuyerOrders: React.FC<BuyerOrdersProps> = ({
                     )}
 
                     <button
-                      id={`btn-view-buyer-order-${order.id}`}
+                      id={`btn-track-order-${order.id}`}
                       onClick={() => setSelectedOrderId(order.id)}
-                      className="py-2 px-4 rounded-full bg-[#1B4332] hover:bg-[#2D5A27] text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer border border-[#1B4332]"
+                      className="py-2.5 px-4 rounded-full bg-[#1B4332] hover:bg-[#2D5A27] text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer border border-[#1B4332] shadow-xs"
                     >
-                      <Eye className="w-3.5 h-3.5 text-[#E8D5B5]" />
-                      <span>View Order Details</span>
+                      <Truck className="w-3.5 h-3.5 text-[#E8D5B5]" />
+                      <span>Track & View Order</span>
                       <ChevronRight className="w-3.5 h-3.5 text-[#E8D5B5]" />
                     </button>
                   </div>

@@ -813,7 +813,7 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
             ) : (
               <Marketplace
                 currentUser={currentUser}
-                cropListings={INITIAL_MARKETPLACE_CROPS}
+                cropListings={cropListings}
               />
             )}
           </div>

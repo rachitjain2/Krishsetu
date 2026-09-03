@@ -160,10 +160,9 @@ export const AICropAdvisor: React.FC<AICropAdvisorProps> = ({ defaultLocation = 
         await saveAIRecommendation({
           cropName: formData.cropName,
           location: formData.location,
-          recommendation: json.data.recommendation,
-          confidenceScore: json.data.confidenceScore,
-          expectedPriceRange: json.data.expectedPriceRange,
-          advisorySummary: json.data.reasoning,
+          farmerName: 'Farmer',
+          inputData: formData,
+          result: json.data,
         });
       } catch (saveErr) {
         console.warn('Persist recommendation notice:', saveErr);
