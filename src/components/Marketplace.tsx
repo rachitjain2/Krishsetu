@@ -22,6 +22,9 @@ import {
 } from 'lucide-react';
 import { CropListing, UserProfile } from '../types';
 import { CropDetails } from './CropDetails';
+import { QualityScoreBadge } from './QualityScoreBadge';
+import { QualityScoreBreakdownModal } from './QualityScoreBreakdownModal';
+import { getCropQualityScore } from '../utils/qualityScorer';
 import { MARKETPLACE_CATEGORIES, MARKETPLACE_LOCATIONS } from '../data/marketplaceData';
 
 interface MarketplaceProps {
@@ -42,18 +45,22 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   // Selected crop for Crop Details view
   const [selectedCropId, setSelectedCropId] = useState<string | null>(selectedCropIdInitial);
 
+  // Inspected crop for Quality-Verified Batch Score Modal
+  const [inspectingCrop, setInspectingCrop] = useState<CropListing | null>(null);
+
   // Search & Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [selectedLocation, setSelectedLocation] = useState('All Locations');
   const [selectedAvailability, setSelectedAvailability] = useState<'All' | 'Active' | 'Under Offer'>('All');
+  const [selectedQualityGrade, setSelectedQualityGrade] = useState<'All' | 'Grade A (85+)' | 'Grade B (70-84)' | 'Grade C-D (<70)'>('All');
   
   // Price filter states
   const [minPrice, setMinPrice] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<string>('');
 
-  // Sorting state: 'price-asc' | 'price-desc' | 'distance' | 'newest'
-  const [sortBy, setSortBy] = useState<'price-asc' | 'price-desc' | 'distance' | 'newest'>('newest');
+  // Sorting state: 'price-asc' | 'price-desc' | 'distance' | 'newest' | 'quality-desc'
+  const [sortBy, setSortBy] = useState<'price-asc' | 'price-desc' | 'distance' | 'newest' | 'quality-desc'>('newest');
 
   // Mobile filters panel toggle
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -71,6 +78,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     setSelectedCategory('All Categories');
     setSelectedLocation('All Locations');
     setSelectedAvailability('All');
+    setSelectedQualityGrade('All');
     setMinPrice('');
     setMaxPrice('');
     setSortBy('newest');
@@ -123,8 +131,21 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         return false;
       }
 
+      // 6. Quality Grade Filter
+      if (selectedQualityGrade !== 'All') {
+        const qScore = getCropQualityScore(crop).final_score;
+        if (selectedQualityGrade === 'Grade A (85+)' && qScore < 85) return false;
+        if (selectedQualityGrade === 'Grade B (70-84)' && (qScore < 70 || qScore >= 85)) return false;
+        if (selectedQualityGrade === 'Grade C-D (<70)' && qScore >= 70) return false;
+      }
+
       return true;
     }).sort((a, b) => {
+      if (sortBy === 'quality-desc') {
+        const scoreA = getCropQualityScore(a).final_score;
+        const scoreB = getCropQualityScore(b).final_score;
+        return scoreB - scoreA;
+      }
       if (sortBy === 'price-asc') {
         return a.expectedPrice - b.expectedPrice;
       }
@@ -137,7 +158,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
       // default: newest / priority
       return b.id.localeCompare(a.id);
     });
-  }, [cropListings, searchQuery, selectedCategory, selectedLocation, selectedAvailability, minPrice, maxPrice, sortBy]);
+  }, [cropListings, searchQuery, selectedCategory, selectedLocation, selectedAvailability, selectedQualityGrade, minPrice, maxPrice, sortBy]);
 
   // If a crop is selected for viewing details, render the CropDetails component
   const selectedCrop = useMemo(() => {
@@ -171,6 +192,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     (selectedCategory !== 'All Categories' ? 1 : 0) +
     (selectedLocation !== 'All Locations' ? 1 : 0) +
     (selectedAvailability !== 'All' ? 1 : 0) +
+    (selectedQualityGrade !== 'All' ? 1 : 0) +
     (minPrice ? 1 : 0) +
     (maxPrice ? 1 : 0) +
     (sortBy !== 'newest' ? 1 : 0);
@@ -253,6 +275,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                   className="w-full pl-9 pr-8 py-3.5 rounded-2xl border-2 border-[#1B4332]/20 text-xs font-black uppercase tracking-wider text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332] appearance-none cursor-pointer"
                 >
                   <option value="newest">Sort: Newest First</option>
+                  <option value="quality-desc">⭐ Sort: Highest Quality Score</option>
                   <option value="price-asc">Sort: Price (Low to High)</option>
                   <option value="price-desc">Sort: Price (High to Low)</option>
                   <option value="distance">Sort: Distance (Nearest)</option>
@@ -326,6 +349,23 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </select>
               </div>
 
+              {/* Quality Grade Filter */}
+              <div className="flex items-center gap-1.5">
+                <Award className="w-4 h-4 text-emerald-700" />
+                <span className="text-xs font-black uppercase tracking-wider text-[#4D6B53]">Quality:</span>
+                <select
+                  id="marketplace-quality-filter"
+                  value={selectedQualityGrade}
+                  onChange={(e) => setSelectedQualityGrade(e.target.value as any)}
+                  className="py-2 px-3 rounded-xl border border-[#1B4332]/20 text-xs font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332] cursor-pointer"
+                >
+                  <option value="All">All Quality Grades</option>
+                  <option value="Grade A (85+)">Grade A (85+ Score)</option>
+                  <option value="Grade B (70-84)">Grade B (70-84 Score)</option>
+                  <option value="Grade C-D (<70)">Grade C & D (&lt;70 Score)</option>
+                </select>
+              </div>
+
               {/* Price Filter (Min & Max Price) */}
               <div className="flex items-center gap-1.5">
                 <IndianRupee className="w-4 h-4 text-[#8C6228]" />
@@ -372,6 +412,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             const unitSingular = crop.unit ? crop.unit.replace(/s$/, '') : 'Qtl';
             const isSold = crop.status === 'Sold';
             const isUnderOffer = crop.status === 'Under Offer';
+            const qScore = getCropQualityScore(crop);
 
             return (
               <div
@@ -394,7 +435,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10 pointer-events-none" />
 
                     {/* Top status tag */}
-                    <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                    <div className="absolute top-3 left-3 flex items-center gap-1.5 z-10">
                       <span
                         className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border shadow-xs ${
                           isSold
@@ -409,6 +450,16 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                       <span className="text-[9px] font-black uppercase tracking-wider bg-white/90 text-[#11281E] px-2 py-0.5 rounded-full">
                         {crop.category}
                       </span>
+                    </div>
+
+                    {/* LARGE CIRCULAR QUALITY SCORE BADGE IN TOP-RIGHT CORNER */}
+                    <div className="absolute top-3 right-3 z-10">
+                      <QualityScoreBadge
+                        score={qScore.final_score}
+                        grade={qScore.letter_grade}
+                        size="md"
+                        onClick={() => setInspectingCrop(crop)}
+                      />
                     </div>
 
                     {/* Distance Tag */}
@@ -486,15 +537,22 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                         </span>
                       </div>
 
-                      {/* Quality Grade */}
+                      {/* Quality Score Breakdown Trigger Row */}
                       <div className="flex items-center justify-between font-bold">
                         <span className="text-[#4D6B53] flex items-center gap-1">
-                          <Award className="w-3.5 h-3.5 text-[#8C6228]" />
-                          <span>Quality:</span>
+                          <Award className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Batch Score:</span>
                         </span>
-                        <span className="text-[#2D5A27] font-black truncate max-w-[160px]">
-                          {crop.qualityGrade}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setInspectingCrop(crop)}
+                          className="text-[#1B4332] hover:text-[#2D5A27] font-black text-[11px] bg-[#E8F0E5] hover:bg-[#d5e7d1] px-2.5 py-0.5 rounded-full border border-[#1B4332]/25 flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Click to view full 4-component score breakdown"
+                        >
+                          <Sparkles className="w-3 h-3 text-amber-600" />
+                          <span>{qScore.final_score}/100 • Grade {qScore.letter_grade}</span>
+                          <ChevronRight className="w-3 h-3" />
+                        </button>
                       </div>
 
                       {/* Harvest Date */}
@@ -512,16 +570,26 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 </div>
 
                 {/* Card Action Footer */}
-                <div className="p-5 pt-0">
-                  <button
-                    id={`btn-view-details-${crop.id}`}
-                    onClick={() => setSelectedCropId(crop.id)}
-                    className="w-full py-3 px-4 rounded-full bg-[#1B4332] hover:bg-[#2D5A27] text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 border-2 border-[#1B4332] shadow-xs group/btn transition-all cursor-pointer"
-                  >
-                    <Eye className="w-4 h-4 text-[#E8D5B5]" />
-                    <span>View Details (विवरण देखें)</span>
-                    <ChevronRight className="w-4 h-4 text-[#E8D5B5] group-hover/btn:translate-x-1 transition-transform" />
-                  </button>
+                <div className="p-5 pt-0 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      id={`btn-inspect-score-${crop.id}`}
+                      onClick={() => setInspectingCrop(crop)}
+                      className="flex-1 py-2.5 px-3 rounded-full bg-[#FAF3E0] hover:bg-[#f3ebd3] text-[#8C6228] text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 border border-[#E8D5B5] shadow-2xs transition-all cursor-pointer"
+                    >
+                      <Award className="w-3.5 h-3.5 text-[#8C6228]" />
+                      <span>Inspect Score</span>
+                    </button>
+                    <button
+                      id={`btn-view-details-${crop.id}`}
+                      onClick={() => setSelectedCropId(crop.id)}
+                      className="flex-1 py-2.5 px-3 rounded-full bg-[#1B4332] hover:bg-[#2D5A27] text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 border-2 border-[#1B4332] shadow-xs group/btn transition-all cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-[#E8D5B5]" />
+                      <span>Details</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-[#E8D5B5] group-hover/btn:translate-x-1 transition-transform" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -547,6 +615,19 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           </button>
         </div>
       )}
+
+      {/* Quality Score Breakdown Modal */}
+      <QualityScoreBreakdownModal
+        isOpen={!!inspectingCrop}
+        onClose={() => setInspectingCrop(null)}
+        crop={inspectingCrop}
+        onMakeOffer={(cropId) => {
+          setSelectedCropId(cropId);
+        }}
+        onPlaceOrder={(cropId) => {
+          setSelectedCropId(cropId);
+        }}
+      />
     </div>
   );
 };

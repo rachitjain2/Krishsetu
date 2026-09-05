@@ -1,6 +1,6 @@
 {
   "name": "KrishiSetu",
-  "description": "A digital platform connecting farmers directly with buyers with farm machinery rental and crop advisory.",
-  "requestFramePermissions": [],
+  "description": "Agri-Tech & rural FinTech marketplace featuring Quality-Verified Batch Scoring for sight-unseen wholesale trust, real-time Reverse-Auction trading, 5km cluster Bulk Bundling, Uber-style live GPS machinery dispatch with escrow, and Kisan AgriScore micro-credit profiling.",
+  "requestFramePermissions": ["microphone", "camera", "geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

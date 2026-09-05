@@ -176,7 +176,6 @@ export const MachineryRental: React.FC<MachineryRentalProps> = ({ currentUser })
     };
     setRentalRequests([withUid, ...rentalRequests]);
     setIsBookingModalOpen(false);
-    setViewMode('my-rentals');
 
     try {
       await createRentalRequestInFirestore(withUid, currentUser?.uid);

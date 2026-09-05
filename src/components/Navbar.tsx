@@ -42,7 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const isDashboard = currentRoute === 'farmer-dashboard' || currentRoute === 'buyer-dashboard';
 
   return (
-    <header className="sticky top-0 z-40 bg-[#F8FAF5]/98 backdrop-blur-md border-b-2 border-[#1B4332]/15 shadow-xs">
+    <header className="sticky top-0 z-40 bg-[#F8FAF5]/95 backdrop-blur-md border-b-2 border-[#1B4332]/15">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
           {/* Logo & Brand */}
@@ -124,26 +124,28 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
 
           {/* Right Actions: Language Switcher + User/Auth Buttons */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2 lg:gap-2.5 shrink-0">
             {/* Language Switcher Pill */}
-            <LanguageSwitcher />
+            <div className="shrink-0">
+              <LanguageSwitcher />
+            </div>
 
             {currentUser ? (
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 shrink-0">
                 <button
                   id="nav-dashboard-button"
                   onClick={() => handleNavClick(currentUser.role === 'farmer' ? 'farmer-dashboard' : 'buyer-dashboard')}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#E8F0E5] border-2 border-[#1B4332]/25 text-[#1B4332] rounded-full text-xs font-black uppercase tracking-wider hover:bg-[#1B4332] hover:text-white transition-colors min-h-[44px]"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 bg-[#E8F0E5] border-2 border-[#1B4332]/25 text-[#1B4332] rounded-full text-xs font-black uppercase tracking-wider hover:bg-[#1B4332] hover:text-white transition-colors shrink-0"
                 >
-                  <LayoutDashboard className="w-4 h-4" />
-                  <span>{currentUser.role === 'farmer' ? (isHindi ? 'किसान डैशबोर्ड' : 'Farmer Portal') : (isHindi ? 'खरीदार डैशबोर्ड' : 'Buyer Portal')}</span>
+                  <LayoutDashboard className="w-4 h-4 shrink-0" />
+                  <span className="whitespace-nowrap">{currentUser.role === 'farmer' ? (isHindi ? 'किसान डैशबोर्ड' : 'Farmer Portal') : (isHindi ? 'खरीदार डैशबोर्ड' : 'Buyer Portal')}</span>
                 </button>
 
-                <div className="flex items-center gap-2 pl-2 border-l-2 border-[#1B4332]/20">
-                  <div className="w-10 h-10 rounded-full bg-[#1B4332] text-white font-black text-xs flex items-center justify-center shadow-xs border-2 border-[#E8D5B5]">
+                <div className="flex items-center gap-2 pl-2 border-l-2 border-[#1B4332]/20 shrink-0">
+                  <div className="w-9 h-9 rounded-full bg-[#1B4332] text-white font-black text-xs flex items-center justify-center shadow-xs border-2 border-[#E8D5B5] shrink-0">
                     {currentUser.name.charAt(0)}
                   </div>
-                  <div className="text-left leading-tight hidden lg:block max-w-[120px]">
+                  <div className="text-left leading-tight hidden xl:block max-w-[120px]">
                     <p className="text-xs font-black text-[#11281E] truncate">{currentUser.name}</p>
                     <p className="text-[10px] uppercase font-black tracking-wider text-[#2D5A27]">
                       {currentUser.role === 'farmer' ? (isHindi ? 'किसान' : 'Farmer') : (isHindi ? 'व्यापारी' : 'Buyer')}
@@ -153,7 +155,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     id="nav-logout-button"
                     onClick={onLogout}
                     title={isHindi ? 'लॉग आउट' : 'Sign Out'}
-                    className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
+                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-colors flex items-center justify-center shrink-0"
                     aria-label="Logout"
                   >
                     <LogOut className="w-4 h-4" />
@@ -161,49 +163,49 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   id="nav-login-choice-button"
                   onClick={() => handleNavClick('role-select')}
-                  className="px-4 py-2.5 text-[#1B4332] hover:text-[#11281E] font-black text-xs uppercase tracking-wider rounded-full hover:bg-[#E8F0E5] transition-colors inline-flex items-center gap-1.5 border-2 border-transparent hover:border-[#1B4332]/20 min-h-[44px]"
+                  className="px-3.5 py-2 text-[#1B4332] hover:text-[#11281E] font-black text-xs uppercase tracking-wider rounded-full hover:bg-[#E8F0E5] transition-colors inline-flex items-center gap-1.5 border-2 border-transparent hover:border-[#1B4332]/20 shrink-0"
                 >
                   <LogIn className="w-4 h-4" />
-                  <span>{isHindi ? 'लॉग इन' : 'Sign In'}</span>
+                  <span className="whitespace-nowrap">{isHindi ? 'लॉग इन' : 'Sign In'}</span>
                 </button>
 
                 <button
                   id="nav-get-started-button"
                   onClick={() => handleNavClick('role-select')}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1B4332] hover:bg-[#2D5A27] text-white rounded-full text-xs font-black uppercase tracking-wider border-2 border-[#1B4332] shadow-sm hover:shadow-md transition-all active:scale-98 min-h-[44px]"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-[#1B4332] hover:bg-[#2D5A27] text-white rounded-full text-xs font-black uppercase tracking-wider border-2 border-[#1B4332] shadow-xs hover:shadow-md transition-all active:scale-98 shrink-0"
                 >
-                  <span>{isHindi ? 'शुरू करें (मुफ़्त)' : 'Get Started'}</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span className="whitespace-nowrap">{isHindi ? 'शुरू करें' : 'Get Started'}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
           </div>
 
           {/* Mobile menu and Language toggle */}
-          <div className="flex md:hidden items-center gap-2">
+          <div className="flex md:hidden items-center gap-1.5 sm:gap-2">
             <LanguageSwitcher />
 
             {currentUser && (
               <button
                 id="mobile-nav-dashboard-shortcut"
                 onClick={() => handleNavClick(currentUser.role === 'farmer' ? 'farmer-dashboard' : 'buyer-dashboard')}
-                className="p-2.5 bg-[#E8F0E5] text-[#1B4332] rounded-2xl border-2 border-[#1B4332]/25 text-xs font-black flex items-center gap-1 min-h-[44px] min-w-[44px] justify-center"
+                className="p-2 bg-[#E8F0E5] text-[#1B4332] rounded-full border-2 border-[#1B4332]/25 text-xs font-black flex items-center justify-center min-h-[40px] min-w-[40px]"
                 aria-label="Dashboard"
               >
-                <LayoutDashboard className="w-5 h-5" />
+                <LayoutDashboard className="w-4 h-4" />
               </button>
             )}
             <button
               id="mobile-menu-toggle-button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2.5 rounded-2xl text-[#1B4332] hover:bg-[#E8F0E5] border-2 border-[#1B4332]/20 transition-colors focus:outline-hidden min-h-[44px] min-w-[44px] flex items-center justify-center"
+              className="p-2 rounded-2xl text-[#1B4332] hover:bg-[#E8F0E5] border-2 border-[#1B4332]/20 transition-colors focus:outline-hidden flex items-center justify-center min-h-[40px] min-w-[40px]"
               aria-label="Toggle mobile menu"
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>

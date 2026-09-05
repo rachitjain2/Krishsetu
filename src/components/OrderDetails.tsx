@@ -351,24 +351,14 @@ export const OrderDetails: React.FC<OrderDetailsProps> = ({
                 )}
 
                 {order.status === 'Accepted' && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      id="farmer-dispatch-order-btn"
-                      onClick={() => setIsTransitModalOpen(true)}
-                      className="py-2.5 px-4 bg-[#1B4332] text-white hover:bg-[#2D5A27] rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs border-2 border-[#1B4332]"
-                    >
-                      <Truck className="w-4 h-4 text-[#E8D5B5]" />
-                      <span>Start Transit (गाड़ी रवाना करें)</span>
-                    </button>
-                    <button
-                      id="farmer-direct-complete-order-btn"
-                      onClick={handleConfirmComplete}
-                      className="py-2.5 px-4 bg-[#2D5A27] text-white hover:bg-[#1B4332] rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs border-2 border-[#2D5A27]"
-                    >
-                      <PackageCheck className="w-4 h-4 text-[#E8D5B5]" />
-                      <span>Complete Order (सौदा पूर्ण)</span>
-                    </button>
-                  </div>
+                  <button
+                    id="farmer-dispatch-order-btn"
+                    onClick={() => setIsTransitModalOpen(true)}
+                    className="py-2.5 px-5 bg-[#1B4332] text-white hover:bg-[#2D5A27] rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs border-2 border-[#1B4332]"
+                  >
+                    <Truck className="w-4 h-4 text-[#E8D5B5]" />
+                    <span>Mark Ready & Start Transit (गाड़ी रवाना करें)</span>
+                  </button>
                 )}
 
                 {order.status === 'In Transit' && (

@@ -137,6 +137,45 @@
         "result": { "type": "map", "description": "AI analysis output: summary, demandLevel, sellingRecommendation, reasoning, suggestions" },
         "createdAt": { "type": "string", "description": "Timestamp of advisory generation" }
       }
+    },
+    "Listing": {
+      "collection": "listings",
+      "fields": {
+        "id": { "type": "string", "description": "Unique listing identifier" },
+        "farmer_id": { "type": "string", "description": "UID or identifier of farmer" },
+        "crop_name": { "type": "string", "description": "Name of crop (e.g. Wheat, Mustard)" },
+        "quantity_kg": { "type": "number", "description": "Available harvest quantity in kilograms" },
+        "quality_grade": { "type": "string", "description": "Quality assessment grade (A, B, or C)" },
+        "price_per_kg_asking": { "type": "number", "description": "Farmer asking price per kg in INR" },
+        "latitude": { "type": "number", "description": "Farm GPS latitude" },
+        "longitude": { "type": "number", "description": "Farm GPS longitude" },
+        "harvest_date": { "type": "string", "description": "Harvest date in YYYY-MM-DD" },
+        "status": { "type": "string", "description": "Listing status: 'active', 'bundled', or 'sold'" },
+        "farmer_name": { "type": "string", "description": "Display name of farmer" },
+        "farmer_phone": { "type": "string", "description": "Contact phone" },
+        "village_or_cluster": { "type": "string", "description": "Village or FPO cluster name" },
+        "bundle_id": { "type": "string", "description": "Assigned bundle ID if bundled" },
+        "created_at": { "type": "string", "description": "Creation timestamp" }
+      }
+    },
+    "BundleGroup": {
+      "collection": "bundles",
+      "fields": {
+        "bundle_id": { "type": "string", "description": "Unique Group Bundle ID" },
+        "crop_name": { "type": "string", "description": "Crop name of aggregated lot" },
+        "quality_grade": { "type": "string", "description": "Common quality grade (A/B/C)" },
+        "total_quantity_kg": { "type": "number", "description": "Total combined volume in kg" },
+        "farmer_count": { "type": "number", "description": "Number of participating farmers" },
+        "average_price_per_kg_asking": { "type": "number", "description": "Weighted average asking price per kg" },
+        "recommended_bulk_price_per_kg": { "type": "number", "description": "Estimated bulk wholesale price per kg" },
+        "total_estimated_value": { "type": "number", "description": "Total lot value in INR" },
+        "bulk_premium_earned": { "type": "number", "description": "Extra collective income from bulk pricing" },
+        "center_latitude": { "type": "number", "description": "Centroid latitude" },
+        "center_longitude": { "type": "number", "description": "Centroid longitude" },
+        "max_distance_km": { "type": "number", "description": "Maximum cluster radius spread in km" },
+        "status": { "type": "string", "description": "'potential', 'active', or 'sold'" },
+        "created_at": { "type": "string", "description": "Creation timestamp" }
+      }
     }
   }
 }

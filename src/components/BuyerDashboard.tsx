@@ -17,13 +17,21 @@ import {
   DollarSign,
   ChevronRight,
   Eye,
-  Check
+  Check,
+  Award,
+  Sparkles,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { AppRoute, UserProfile, CropListing, Order } from '../types';
 import { Marketplace } from './Marketplace';
 import { BuyerOrders } from './BuyerOrders';
 import { MarketIntelligence } from './MarketIntelligence';
+import { ReverseAuctionRoom } from './ReverseAuctionRoom';
+import { GroupBulkBundling } from './GroupBulkBundling';
+import { QualityBatchScoreDemo } from './QualityBatchScoreDemo';
+import { QualityScoreBadge } from './QualityScoreBadge';
+import { QualityScoreBreakdownModal } from './QualityScoreBreakdownModal';
+import { getCropQualityScore } from '../utils/qualityScorer';
 import { MobileBottomNav } from './common/MobileBottomNav';
 import { INITIAL_MARKETPLACE_CROPS } from '../data/marketplaceData';
 import { useLanguage } from '../context/LanguageContext';
@@ -37,6 +45,7 @@ interface BuyerDashboardProps {
   orders: Order[];
   onCancelOrder?: (orderId: string, reason: string) => void;
   onPlaceOrder?: (cropId: string, quantity: number, deliveryAddress: string) => void;
+  onOpenVoiceAssistant?: () => void;
 }
 
 export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
@@ -46,10 +55,12 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
   orders,
   onCancelOrder,
   onPlaceOrder,
+  onOpenVoiceAssistant,
 }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [crops, setCrops] = useState<CropListing[]>(INITIAL_MARKETPLACE_CROPS);
+  const [inspectingCrop, setInspectingCrop] = useState<CropListing | null>(null);
 
   useEffect(() => {
     const unsub = subscribeToCropListings((updated) => {
@@ -160,6 +171,7 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
         onSwitchRole={onNavigate}
         isOpenMobile={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
+        onOpenVoiceAssistant={onOpenVoiceAssistant}
       />
 
       {/* Main Content Area */}
@@ -303,6 +315,44 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
               </div>
             </div>
 
+            {/* QUALITY-VERIFIED BATCH SCORE HIGHLIGHT BANNER */}
+            <div
+              id="buyer-quality-score-banner"
+              onClick={() => setActiveTab('batch-quality-score')}
+              className="bg-[#1B4332] text-white p-6 rounded-[28px] border-2 border-emerald-900 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 cursor-pointer hover:bg-[#153427] transition-all group"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-amber-400 text-[#1B4332] flex items-center justify-center font-black shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                  <Award className="w-8 h-8" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/20 text-emerald-200">
+                      Sight-Unseen Trust Engine
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#C9622F] text-white">
+                      FastAPI Verified
+                    </span>
+                  </div>
+                  <h4 className="text-lg font-black uppercase tracking-tight text-white">
+                    {isHindi ? 'प्रमाणित गुणवत्ता बैच स्कोर (A-Grade Lots)' : 'Quality-Verified Batch Scores'}
+                  </h4>
+                  <p className="text-xs text-emerald-100 font-medium max-w-xl">
+                    {isHindi
+                      ? 'बिना भौतिक निरीक्षण के थोक खरीद करें। ताज़गी, विश्वसनीयता, खरीदार रेटिंग व एआई विज़न स्कोर देखें।'
+                      : 'Purchase bulk harvest lots sight-unseen with mathematical scores across Freshness, Reliability, Ratings & Vision.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-amber-400 text-stone-950 font-black text-xs uppercase tracking-wider hover:bg-amber-300 transition-all shrink-0 flex items-center justify-center gap-2"
+              >
+                <span>{isHindi ? 'बैच स्कोर जांचें' : 'Inspect Scores'}</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
             {/* Quick Sourcing Marketplace Preview */}
             <div className="bg-white p-6 sm:p-8 rounded-[32px] border-2 border-[#1B4332]/15 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b-2 border-[#1B4332]/10">
@@ -320,33 +370,54 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {crops.slice(0, 3).map((crop) => (
-                  <div key={crop.id} className="p-5 rounded-2xl bg-[#F8FAF5] border-2 border-[#1B4332]/15 flex flex-col justify-between hover:border-[#1B4332] transition-all">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-[#1B4332] bg-[#E8F0E5] px-2.5 py-0.5 rounded-full border border-[#1B4332]/20">
-                          {crop.category}
-                        </span>
-                        <span className="text-xs font-bold text-[#8FA396]">{crop.location.split(',')[0]}</span>
+                {crops.slice(0, 3).map((crop) => {
+                  const qScore = getCropQualityScore(crop);
+                  return (
+                    <div key={crop.id} className="p-5 rounded-2xl bg-[#F8FAF5] border-2 border-[#1B4332]/15 flex flex-col justify-between hover:border-[#1B4332] transition-all relative">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-[#1B4332] bg-[#E8F0E5] px-2.5 py-0.5 rounded-full border border-[#1B4332]/20">
+                            {crop.category}
+                          </span>
+                          <span className="text-xs font-bold text-[#8FA396]">{crop.location.split(',')[0]}</span>
+                        </div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h4 className="font-black text-[#11281E] text-base uppercase">{crop.cropName}</h4>
+                            <p className="text-xs text-[#4D6B53] font-bold mt-1">
+                              {isHindi ? 'किसान:' : 'Farmer:'} {crop.farmerName || 'Verified Kisan'} • {crop.quantity} {crop.unit}
+                            </p>
+                          </div>
+                          <QualityScoreBadge
+                            score={qScore.final_score}
+                            grade={qScore.letter_grade}
+                            size="sm"
+                            onClick={() => setInspectingCrop(crop)}
+                          />
+                        </div>
                       </div>
-                      <h4 className="font-black text-[#11281E] text-base uppercase">{crop.cropName}</h4>
-                      <p className="text-xs text-[#4D6B53] font-bold mt-1">
-                        {isHindi ? 'किसान:' : 'Farmer:'} {crop.farmerName || 'Verified Kisan'} • {crop.quantity} {crop.unit}
-                      </p>
+                      <div className="mt-4 pt-3 border-t border-[#1B4332]/10 flex items-center justify-between gap-2">
+                        <span className="text-base font-black text-[#1B4332]">
+                          ₹{crop.expectedPrice.toLocaleString('en-IN')} / {crop.unit ? crop.unit.replace(/s$/, '') : 'Qtl'}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setInspectingCrop(crop)}
+                            className="text-[11px] bg-[#FAF3E0] text-[#8C6228] px-3 py-2 rounded-full font-black uppercase tracking-wider hover:bg-[#f3ebd3] border border-[#E8D5B5] cursor-pointer"
+                          >
+                            {isHindi ? 'स्कोर देखें' : 'Inspect Score'}
+                          </button>
+                          <button 
+                            onClick={() => setActiveTab('browse-produce')}
+                            className="text-[11px] bg-[#1B4332] text-white px-3 py-2 rounded-full font-black uppercase tracking-wider hover:bg-[#2D5A27] border border-[#1B4332] cursor-pointer"
+                          >
+                            {isHindi ? 'खरीदें' : 'Procure'}
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-4 pt-3 border-t border-[#1B4332]/10 flex items-center justify-between">
-                      <span className="text-base font-black text-[#1B4332]">
-                        ₹{crop.expectedPrice.toLocaleString('en-IN')} / {crop.unit ? crop.unit.replace(/s$/, '') : 'Qtl'}
-                      </span>
-                      <button 
-                        onClick={() => setActiveTab('browse-produce')}
-                        className="text-xs bg-[#1B4332] text-white px-4 py-2.5 rounded-full font-black uppercase tracking-wider hover:bg-[#2D5A27] border border-[#1B4332] cursor-pointer min-h-[40px]"
-                      >
-                        {isHindi ? 'विवरण देखें' : 'View Details'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -439,6 +510,11 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
           </div>
         )}
 
+        {/* TAB: REVERSE AUCTION FLOOR */}
+        {activeTab === 'reverse-auction' && (
+          <ReverseAuctionRoom currentUser={currentUser} userRole="buyer" />
+        )}
+
         {/* TAB 5: MARKET INTELLIGENCE */}
         {activeTab === 'market-intelligence' && (
           <MarketIntelligence currentUser={currentUser} />
@@ -498,6 +574,23 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
             </div>
           </div>
         )}
+
+        {/* TAB: BULK BUNDLES (WHOLESALE LOTS) */}
+        {activeTab === 'group-bundling' && (
+          <GroupBulkBundling
+            currentUser={currentUser}
+            onNavigateToMarketplace={() => setActiveTab('browse-produce')}
+          />
+        )}
+
+        {/* TAB: QUALITY-VERIFIED BATCH SCORE */}
+        {activeTab === 'batch-quality-score' && (
+          <QualityBatchScoreDemo
+            currentUser={currentUser}
+            onNavigateToAuction={() => setActiveTab('reverse-auction')}
+            onNavigateToMarketplace={() => setActiveTab('browse-produce')}
+          />
+        )}
       </main>
 
       {/* Mobile Sticky Bottom Navigation */}
@@ -505,6 +598,19 @@ export const BuyerDashboard: React.FC<BuyerDashboardProps> = ({
         currentTab={activeTab}
         onTabChange={(tab) => setActiveTab(tab)}
         currentUser={currentUser}
+      />
+
+      {/* Quality Score Breakdown Modal */}
+      <QualityScoreBreakdownModal
+        isOpen={!!inspectingCrop}
+        onClose={() => setInspectingCrop(null)}
+        crop={inspectingCrop}
+        onMakeOffer={(cropId) => {
+          setActiveTab('browse-produce');
+        }}
+        onPlaceOrder={(cropId) => {
+          setActiveTab('browse-produce');
+        }}
       />
     </div>
   );

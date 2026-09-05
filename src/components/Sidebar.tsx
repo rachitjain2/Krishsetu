@@ -15,7 +15,15 @@ import {
   ShieldCheck,
   HelpCircle,
   X,
-  User
+  User,
+  Gavel,
+  CreditCard,
+  Flame,
+  Navigation,
+  Mic,
+  Layers,
+  Sparkles,
+  Award
 } from 'lucide-react';
 import { AppRoute, UserProfile } from '../types';
 import { useLanguage } from '../context/LanguageContext';
@@ -37,6 +45,7 @@ interface SidebarProps {
   onSwitchRole: (targetRoute: AppRoute) => void;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
+  onOpenVoiceAssistant?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -48,23 +57,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSwitchRole,
   isOpenMobile = false,
   onCloseMobile,
+  onOpenVoiceAssistant,
 }) => {
   const isFarmer = role === 'farmer';
   const { isHindi } = useLanguage();
 
   const farmerItems: SidebarItem[] = [
     { id: 'dashboard', label: 'Dashboard', hindiLabel: 'डैशबोर्ड व मुख्य मेनू', icon: LayoutDashboard },
+    { id: 'group-bundling', label: 'Bulk Bundling', hindiLabel: 'समूह बल्क बंडलिंग', icon: Layers, badge: '5km Cluster' },
+    { id: 'reverse-auction', label: 'Reverse Auction', hindiLabel: 'लाइव रिवर्स-ऑक्शन', icon: Gavel, badge: 'Live Bids' },
+    { id: 'voice-assistant', label: 'Voice Assistant', hindiLabel: 'आवाज सहायक (बोलकर पूछें)', icon: Mic, badge: 'AI Voice' },
+    { id: 'live-gps-machinery', label: 'Live GPS Rental', hindiLabel: 'जीपीएस ट्रैक्टर व मशीनरी', icon: Navigation, badge: 'Uber-Style' },
+    { id: 'micro-credit', label: 'Agri-Credit Score', hindiLabel: 'किसान क्रेडिट स्कोर (FinTech)', icon: CreditCard, badge: 'AAA Prime' },
     { id: 'my-crops', label: 'My Crops', hindiLabel: 'मेरी फसलें व बिक्री', icon: Wheat, badge: '3 Active' },
     { id: 'marketplace', label: 'Marketplace', hindiLabel: 'थोक कृषि बाज़ार', icon: Store, badge: 'Live' },
     { id: 'orders', label: 'Orders & Deals', hindiLabel: 'ऑर्डर्स और सौदे', icon: ShoppingBag, badge: '2 Active' },
     { id: 'advisory', label: 'Crop Doctor (AI)', hindiLabel: 'फसल डॉक्टर व सलाह', icon: Bot, badge: 'Smart' },
-    { id: 'machinery', label: 'Machinery Rental', hindiLabel: 'ट्रैक्टर व मशीन किराया', icon: Tractor, badge: 'Nearby' },
     { id: 'market-prices', label: 'Mandi Rates', hindiLabel: 'मंडी भाव व बाज़ार', icon: TrendingUp, badge: 'Demo Data' },
     { id: 'profile', label: 'Profile', hindiLabel: 'किसान प्रोफ़ाइल', icon: User },
   ];
 
   const buyerItems: SidebarItem[] = [
     { id: 'overview', label: 'Buyer Overview', hindiLabel: 'खरीद केंद्र अवलोकन', icon: LayoutDashboard },
+    { id: 'batch-quality-score', label: 'Batch Quality Scores', hindiLabel: 'गुणवत्ता बैच स्कोर व ग्रेड', icon: Award, badge: 'Grade A-D' },
+    { id: 'group-bundling', label: 'Bulk Bundles', hindiLabel: 'समूह बल्क बंडल (Lots)', icon: Layers, badge: 'Wholesale Lots' },
+    { id: 'reverse-auction', label: 'Reverse-Auction Floor', hindiLabel: 'लाइव रिवर्स-ऑक्शन हॉल', icon: Gavel, badge: 'Bid Now' },
     { id: 'browse-produce', label: 'Browse Crops', hindiLabel: 'ताज़ा फसल खोजें', icon: Store, badge: 'Live' },
     { id: 'my-orders', label: 'Procurement Orders', hindiLabel: 'खरीद ऑर्डर स्थिति', icon: ShoppingBag, badge: '4 Pending' },
     { id: 'bids', label: 'Direct Farm Bids', hindiLabel: 'सीधी बोली व मोलभाव', icon: TrendingUp },
@@ -75,6 +92,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems = isFarmer ? farmerItems : buyerItems;
 
   const handleTabClick = (tabId: string) => {
+    if (tabId === 'voice-assistant' && onOpenVoiceAssistant) {
+      onOpenVoiceAssistant();
+      if (onCloseMobile) onCloseMobile();
+      return;
+    }
     onSelectTab(tabId);
     if (onCloseMobile) {
       onCloseMobile();

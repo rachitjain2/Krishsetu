@@ -9,6 +9,7 @@ import { AuthFarmer } from './components/AuthFarmer';
 import { AuthBuyer } from './components/AuthBuyer';
 import { FarmerDashboard } from './components/FarmerDashboard';
 import { BuyerDashboard } from './components/BuyerDashboard';
+import { VoiceAssistantModal } from './components/VoiceAssistant';
 import { AppRoute, UserProfile, Order, CropListing } from './types';
 import { INITIAL_ORDERS } from './data/ordersData';
 import { INITIAL_MARKETPLACE_CROPS } from './data/marketplaceData';
@@ -31,6 +32,13 @@ function MainApp() {
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
   const [crops, setCrops] = useState<CropListing[]>(INITIAL_MARKETPLACE_CROPS);
   const [isFirebaseSyncing, setIsFirebaseSyncing] = useState<boolean>(true);
+  const [isVoiceAssistantOpen, setIsVoiceAssistantOpen] = useState<boolean>(false);
+  const [farmerActiveTab, setFarmerActiveTab] = useState<string>('dashboard');
+
+  const handleOpenCropAdvisor = () => {
+    setFarmerActiveTab('advisory');
+    setCurrentRoute('farmer-dashboard');
+  };
   const { isHindi } = useLanguage();
   const { showSuccess, showError, showInfo } = useToast();
 
@@ -546,6 +554,8 @@ function MainApp() {
                 onRejectOrder={handleRejectOrder}
                 onMarkInTransit={handleMarkInTransit}
                 onMarkCompleted={handleMarkCompleted}
+                onOpenVoiceAssistant={() => setIsVoiceAssistantOpen(true)}
+                initialTab={farmerActiveTab}
               />
             )}
 
@@ -557,11 +567,34 @@ function MainApp() {
                 orders={orders}
                 onCancelOrder={handleCancelOrder}
                 onPlaceOrder={handlePlaceOrder}
+                onOpenVoiceAssistant={() => setIsVoiceAssistantOpen(true)}
               />
             )}
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* Global Interactive Voice Assistant Modal & Launcher */}
+      <VoiceAssistantModal
+        currentUser={currentUser}
+        currentRoute={currentRoute}
+        marketplaceCrops={crops}
+        isOpenExternal={isVoiceAssistantOpen}
+        onOpenExternal={() => setIsVoiceAssistantOpen(true)}
+        onCloseExternal={() => setIsVoiceAssistantOpen(false)}
+        onNavigateTab={(tabId) => {
+          setFarmerActiveTab(tabId);
+          if (currentRoute !== 'farmer-dashboard' && currentRoute !== 'buyer-dashboard') {
+            handleNavigate(currentUser?.role === 'buyer' ? 'buyer-dashboard' : 'farmer-dashboard');
+          }
+        }}
+        onOpenQuickCropListing={() => {
+          setFarmerActiveTab('my-crops');
+          if (currentRoute !== 'farmer-dashboard') {
+            handleNavigate('farmer-dashboard');
+          }
+        }}
+      />
     </div>
   );
 }

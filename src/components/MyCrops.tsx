@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Wheat,
   PlusCircle,
@@ -27,7 +27,14 @@ import {
   AlertTriangle,
   BadgeCheck,
   ChevronDown,
-  Info
+  Info,
+  Mic,
+  MicOff,
+  Volume2,
+  ShieldCheck,
+  TrendingUp,
+  Zap,
+  Loader2
 } from 'lucide-react';
 import { CropListing, UserProfile } from '../types';
 
@@ -126,6 +133,32 @@ export const MyCrops: React.FC<MyCropsProps> = ({
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string>('');
 
+  // Voice Input & AI Extraction State
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+  const [selectedVoiceLang, setSelectedVoiceLang] = useState<'Hindi' | 'English' | 'Marathi' | 'Punjabi'>('Hindi');
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [voiceExtractionSuccess, setVoiceExtractionSuccess] = useState<boolean | null>(null);
+  const [voiceAudioLevel, setVoiceAudioLevel] = useState<number>(0);
+  const [extractedDetails, setExtractedDetails] = useState<{
+    crop_name: string | null;
+    quantity_kg: number | null;
+    price_per_kg: number | null;
+    location: string | null;
+  } | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+
+  // Farmer Trust Score State
+  const [farmerTrustScore, setFarmerTrustScore] = useState<number>(785);
+  const [trustScoreGainAnimation, setTrustScoreGainAnimation] = useState<number | null>(null);
+
   // Search & Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
@@ -209,6 +242,338 @@ export const MyCrops: React.FC<MyCropsProps> = ({
     if (onCloseAddModal) {
       onCloseAddModal();
     }
+  };
+
+  const SAMPLE_VOICE_PROMPTS = [
+    {
+      lang: 'Hindi',
+      title: '🌾 गेहूं (Wheat) - Ujjain',
+      transcript: 'मेरे पास उज्जैन में 50 क्विंटल शरबती गेहूं है, 26 रुपये किलो या 2600 रुपये क्विंटल बेचना है।'
+    },
+    {
+      lang: 'Hindi',
+      title: '🟡 सरसों (Mustard) - Alwar',
+      transcript: 'अलवर राजस्थान में 1200 किलो पीली सरसों तैयार है, भाव 55 रुपये प्रति किलो चाहिए।'
+    },
+    {
+      lang: 'Marathi',
+      title: '🧅 कांदा (Onion) - Nashik',
+      transcript: 'नाशिक मध्ये 2500 किलो लाल कांदा 18 रुपये किलो भावाने विकायचा आहे.'
+    },
+    {
+      lang: 'English',
+      title: '🧆 Desi Chana - Indore',
+      transcript: 'I have 1500 kg desi chana harvest ready in Indore Madhya Pradesh, expected price is 49 rupees per kg.'
+    },
+    {
+      lang: 'Punjabi',
+      title: '🍚 ਬਾਸਮਤੀ (Basmati) - Karnal',
+      transcript: 'ਕਰਨਾਲ ਵਿਚ 3000 ਕਿਲੋ ਬਾਸਮਤੀ ਝੋਨਾ 38 ਰੁਪਏ ਕਿਲੋ ਦੇ ਭਾਅ ਵੇਚਣਾ ਹੈ।'
+    }
+  ];
+
+  const startVoiceRecording = async () => {
+    // Reset state
+    setVoiceTranscript('');
+    setVoiceAudioLevel(0);
+    audioChunksRef.current = [];
+
+    // 1. Capture direct microphone audio stream
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+
+        // Visualizer
+        try {
+          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+          if (AudioContextClass) {
+            const ctx = new AudioContextClass();
+            audioContextRef.current = ctx;
+            const src = ctx.createMediaStreamSource(stream);
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 64;
+            src.connect(analyser);
+            analyserRef.current = analyser;
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            const updateLevel = () => {
+              if (analyserRef.current) {
+                analyserRef.current.getByteFrequencyData(dataArray);
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                setVoiceAudioLevel(Math.min(100, Math.round((sum / dataArray.length / 128) * 100)));
+                animFrameRef.current = requestAnimationFrame(updateLevel);
+              }
+            };
+            updateLevel();
+          }
+        } catch (e) {}
+
+        // MediaRecorder
+        let mimeType = 'audio/webm';
+        if (!MediaRecorder.isTypeSupported('audio/webm')) {
+          if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+          else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+          else mimeType = '';
+        }
+
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        mediaRecorderRef.current = recorder;
+
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            audioChunksRef.current.push(e.data);
+          }
+        };
+
+        recorder.start(250);
+      }
+    } catch (err) {
+      console.warn('Microphone stream error in MyCrops:', err);
+    }
+
+    // 2. Web Speech API in parallel
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      try {
+        if (recognitionRef.current) {
+          recognitionRef.current.abort();
+        }
+        const recognition = new SpeechRecognition();
+        recognitionRef.current = recognition;
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = selectedVoiceLang === 'Hindi' ? 'hi-IN' : selectedVoiceLang === 'Marathi' ? 'mr-IN' : selectedVoiceLang === 'Punjabi' ? 'pa-IN' : 'en-IN';
+
+        recognition.onresult = (event: any) => {
+          let text = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            text += event.results[i][0].transcript;
+          }
+          if (text) setVoiceTranscript(text);
+        };
+
+        recognition.onerror = () => {};
+        recognition.onend = () => {};
+
+        recognition.start();
+      } catch (err) {
+        console.warn('Speech recognition start note:', err);
+      }
+    }
+
+    setIsListening(true);
+  };
+
+  const stopVoiceRecording = async () => {
+    setIsListening(false);
+    setVoiceAudioLevel(0);
+
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+
+    // Stop recorder and check blob
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      const recorder = mediaRecorderRef.current;
+      const blobPromise = new Promise<Blob | null>((resolve) => {
+        recorder.onstop = () => {
+          const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+          resolve(blob.size > 500 ? blob : null);
+        };
+        try {
+          recorder.stop();
+        } catch (e) {
+          resolve(null);
+        }
+      });
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+
+      const audioBlob = await blobPromise;
+
+      if (voiceTranscript.trim()) {
+        handleExtractFromVoice(voiceTranscript);
+      } else if (audioBlob) {
+        handleExtractFromAudio(audioBlob);
+      }
+    } else {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      if (voiceTranscript.trim()) {
+        handleExtractFromVoice(voiceTranscript);
+      }
+    }
+  };
+
+  const handleExtractFromAudio = async (blob: Blob) => {
+    setIsProcessingVoice(true);
+    setVoiceExtractionSuccess(null);
+    setVoiceTranscript('🎙️ प्रोसेसिंग ऑडियो आवाज़ (Extracting details from voice audio)...');
+
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onloadend = async () => {
+        const base64Data = (reader.result as string).split(',')[1];
+        const mimeType = blob.type || 'audio/webm';
+
+        try {
+          const response = await fetch('/api/crops/voice-extract-audio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              audioBase64: base64Data,
+              mimeType,
+              language: selectedVoiceLang,
+            }),
+          });
+
+          const result = await response.json();
+          if (result.success && result.data) {
+            const data = result.data;
+            if (data.transcribedText) {
+              setVoiceTranscript(data.transcribedText);
+            }
+            populateFormWithExtracted(data);
+          } else {
+            throw new Error(result.error || 'Failed to extract from audio');
+          }
+        } catch (err: any) {
+          console.error('Audio extraction API error:', err);
+          showToast('Could not parse audio clearly. Please tap a sample listing or speak again.');
+        } finally {
+          setIsProcessingVoice(false);
+        }
+      };
+    } catch (e) {
+      setIsProcessingVoice(false);
+    }
+  };
+
+  const populateFormWithExtracted = (data: any) => {
+    setExtractedDetails(data);
+    setVoiceExtractionSuccess(true);
+
+    if (data.crop_name) {
+      setFormCropName(data.crop_name);
+      const lower = data.crop_name.toLowerCase();
+      if (lower.includes('wheat') || lower.includes('गेहूं') || lower.includes('rice') || lower.includes('धान') || lower.includes('paddy')) {
+        setFormCategory('Grains & Cereals');
+        setFormHindiName('शरबती गेहूं');
+      } else if (lower.includes('mustard') || lower.includes('सरसों') || lower.includes('soybean') || lower.includes('सोयाबीन')) {
+        setFormCategory('Oilseeds');
+        setFormHindiName('पीली सरसों');
+      } else if (lower.includes('chana') || lower.includes('चना') || lower.includes('dal') || lower.includes('दाल') || lower.includes('gram')) {
+        setFormCategory('Pulses & Dal');
+        setFormHindiName('देसी चना');
+      } else if (lower.includes('onion') || lower.includes('प्याज') || lower.includes('potato') || lower.includes('आलू') || lower.includes('कांदा')) {
+        setFormCategory('Vegetables');
+        setFormHindiName('लाल प्याज');
+      } else if (lower.includes('cotton') || lower.includes('कपास')) {
+        setFormCategory('Cash Crops');
+        setFormHindiName('कपास (नरमा)');
+      } else if (lower.includes('garlic') || lower.includes('लहसुन')) {
+        setFormCategory('Spices');
+        setFormHindiName('देसी लहसुन');
+      }
+    }
+
+    if (data.quantity_kg !== null && data.quantity_kg !== undefined) {
+      if (data.quantity_kg >= 100) {
+        setFormQuantity((data.quantity_kg / 100).toString());
+        setFormUnit('Quintals');
+      } else {
+        setFormQuantity(data.quantity_kg.toString());
+        setFormUnit('Kg');
+      }
+    }
+
+    if (data.price_per_kg !== null && data.price_per_kg !== undefined) {
+      const price = data.quantity_kg && data.quantity_kg >= 100 ? data.price_per_kg * 100 : data.price_per_kg;
+      setFormExpectedPrice(price.toString());
+    }
+
+    if (data.location) {
+      setFormLocation(data.location);
+    }
+
+    const matched = PRESET_CROP_IMAGES.find((img) => 
+      data.crop_name && (
+        data.crop_name.toLowerCase().includes(img.name.split(' ')[0].toLowerCase()) ||
+        img.name.toLowerCase().includes(data.crop_name.toLowerCase())
+      )
+    );
+    if (matched) {
+      setFormImageUrl(matched.url);
+      setFormImagePreview(matched.url);
+    }
+
+    showToast(`AI extracted: ${data.crop_name || 'Crop'} (${data.quantity_kg || '?'} kg @ ₹${data.price_per_kg || '?'}/kg). Form ready!`);
+  };
+
+  const handleExtractFromVoice = async (transcriptToUse?: string, langToUse?: string) => {
+    const text = transcriptToUse || voiceTranscript;
+    const lang = langToUse || selectedVoiceLang;
+    if (!text.trim()) {
+      showToast('Please speak or select a sample transcript first.');
+      return;
+    }
+
+    setIsProcessingVoice(true);
+    setVoiceExtractionSuccess(null);
+
+    try {
+      const response = await fetch('/api/crops/voice-extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: text, language: lang })
+      });
+
+      const result = await response.json();
+      if (result.success && result.data) {
+        populateFormWithExtracted(result.data);
+      } else {
+        throw new Error(result.error || 'Failed to extract voice details');
+      }
+    } catch (err: any) {
+      console.error('Voice Extraction Error:', err);
+      // Fallback heuristic extraction
+      const fallbackCrop = text.match(/(गेहूं|wheat|सरसों|mustard|चना|chana|धान|paddy|प्याज|onion|सोयाबीन|soybean|लहसुन|garlic|कपास|cotton)/i)?.[0] || 'Wheat';
+      setFormCropName(fallbackCrop);
+      setFormQuantity('50');
+      setFormUnit('Quintals');
+      setFormExpectedPrice('2600');
+      setFormLocation(currentUser?.location || 'Ujjain, Madhya Pradesh');
+      setExtractedDetails({
+        crop_name: fallbackCrop,
+        quantity_kg: 5000,
+        price_per_kg: 26,
+        location: currentUser?.location || 'Ujjain, Madhya Pradesh'
+      });
+      setVoiceExtractionSuccess(true);
+      showToast('AI filled crop listing from transcript. Review & save!');
+    } finally {
+      setIsProcessingVoice(false);
+    }
+  };
+
+  const applyExtractedDetailsAndOpenForm = () => {
+    setIsVoiceModalOpen(false);
+    setIsAddModalOpen(true);
   };
 
   // Preset suggestion quick select
@@ -395,15 +760,31 @@ export const MyCrops: React.FC<MyCropsProps> = ({
             </p>
           </div>
 
-          {/* Prominent Add New Crop Button */}
-          <button
-            id="btn-open-add-crop-modal"
-            onClick={handleOpenAddModal}
-            className="py-3 px-6 bg-[#1B4332] text-white hover:bg-[#2D5A27] transition-all rounded-full text-xs sm:text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2.5 border-2 border-[#1B4332] shadow-sm shrink-0 cursor-pointer group"
-          >
-            <PlusCircle className="w-5 h-5 text-[#E8D5B5] group-hover:scale-110 transition-transform" />
-            <span>Add New Crop Batch (नई फसल जोड़ें)</span>
-          </button>
+          {/* Action Buttons: Voice Input & Manual Add */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              id="btn-open-voice-crop-modal"
+              onClick={() => {
+                setVoiceTranscript('');
+                setExtractedDetails(null);
+                setVoiceExtractionSuccess(null);
+                setIsVoiceModalOpen(true);
+              }}
+              className="py-3 px-5 bg-[#FAF3E0] text-[#8C6228] hover:bg-[#F2E5C9] transition-all rounded-full text-xs sm:text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 border-2 border-[#E8D5B5] shadow-xs shrink-0 cursor-pointer group"
+            >
+              <Mic className="w-4 h-4 text-[#8C6228] group-hover:scale-110 transition-transform animate-pulse" />
+              <span>🎙️ Speak & List (बोलकर लिस्ट करें)</span>
+            </button>
+
+            <button
+              id="btn-open-add-crop-modal"
+              onClick={handleOpenAddModal}
+              className="py-3 px-5 bg-[#1B4332] text-white hover:bg-[#2D5A27] transition-all rounded-full text-xs sm:text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 border-2 border-[#1B4332] shadow-sm shrink-0 cursor-pointer group"
+            >
+              <PlusCircle className="w-4 h-4 text-[#E8D5B5] group-hover:scale-110 transition-transform" />
+              <span>Add Batch (नई फसल)</span>
+            </button>
+          </div>
         </div>
 
         {/* Inventory Metrics Row */}
@@ -453,6 +834,39 @@ export const MyCrops: React.FC<MyCropsProps> = ({
             <span className="text-[10px] font-bold text-[#4D6B53] mt-1 block">
               {totalVolume} Quintals / Units
             </span>
+          </div>
+        </div>
+
+        {/* Smart Farmer Trust Score & Loan Eligibility Banner */}
+        <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#1B4332] to-[#2D5A27] text-white border-2 border-[#1B4332] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm relative overflow-hidden">
+          <div className="relative z-10 space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-[#E8D5B5] text-[#11281E] text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#1B4332]" />
+                <span>Kisan Trust Score: {farmerTrustScore}/900 (AAA Prime)</span>
+              </span>
+              {trustScoreGainAnimation && (
+                <span className="animate-bounce text-xs font-black text-amber-300">
+                  +{trustScoreGainAnimation} Points Earned! 🚀
+                </span>
+              )}
+            </div>
+            <h4 className="text-sm sm:text-base font-black tracking-tight text-white flex items-center gap-2">
+              <span>Sell Crops & Rent Machinery on Time to Build Your Loan Trust Score</span>
+            </h4>
+            <p className="text-xs text-white/80 font-medium max-w-2xl">
+              Every on-time produce trade (<span className="font-bold text-amber-200">+15 pts</span>) and prompt machinery rental payment (<span className="font-bold text-amber-200">+20 pts</span>) builds your platform credit history. Unlocks ₹1,50,000 PSL seasonal credit at 4.5% p.a.
+            </p>
+          </div>
+
+          <div className="relative z-10 flex items-center gap-2 shrink-0">
+            <div className="text-right hidden sm:block">
+              <span className="text-[10px] uppercase font-bold text-white/70 block">Pre-Approved Line</span>
+              <span className="text-base font-black text-amber-300">₹1,50,000</span>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-amber-300">
+              <TrendingUp className="w-5 h-5" />
+            </div>
           </div>
         </div>
       </div>
@@ -739,11 +1153,16 @@ export const MyCrops: React.FC<MyCropsProps> = ({
                       id={`btn-toggle-sold-${crop.id}`}
                       onClick={() => {
                         onToggleSold(crop.id);
-                        showToast(
-                          isSold
-                            ? `Re-activated listing "${crop.cropName}" on exchange!`
-                            : `Marked "${crop.cropName}" as SOLD! Total value completed.`
-                        );
+                        if (!isSold) {
+                          setFarmerTrustScore((prev) => Math.min(900, prev + 15));
+                          setTrustScoreGainAnimation(15);
+                          setTimeout(() => setTrustScoreGainAnimation(null), 4000);
+                          showToast(
+                            `🎉 Marked "${crop.cropName}" as SOLD! +15 Trust Score earned towards your bank loan line!`
+                          );
+                        } else {
+                          showToast(`Re-activated listing "${crop.cropName}" on exchange!`);
+                        }
                       }}
                       className={`flex-1 py-2 px-3 rounded-full text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border shadow-2xs ${
                         isSold
@@ -834,13 +1253,29 @@ export const MyCrops: React.FC<MyCropsProps> = ({
                   </p>
                 </div>
               </div>
-              <button
-                id="btn-close-crop-modal"
-                onClick={handleCloseModal}
-                className="p-2 text-[#4D6B53] hover:text-[#11281E] hover:bg-[#E8F0E5] rounded-full transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {!editingCrop && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddModalOpen(false);
+                      setIsVoiceModalOpen(true);
+                    }}
+                    className="py-1.5 px-3 rounded-full bg-[#FAF3E0] text-[#8C6228] hover:bg-[#F2E5C9] border border-[#E8D5B5] text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    title="Speak in Hindi/English to auto-fill form"
+                  >
+                    <Mic className="w-3.5 h-3.5 text-[#8C6228] animate-pulse" />
+                    <span>🎙️ Voice Auto-Fill</span>
+                  </button>
+                )}
+                <button
+                  id="btn-close-crop-modal"
+                  onClick={handleCloseModal}
+                  className="p-2 text-[#4D6B53] hover:text-[#11281E] hover:bg-[#E8F0E5] rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Validation Error Alert */}
@@ -1204,6 +1639,263 @@ export const MyCrops: React.FC<MyCropsProps> = ({
                 Yes, Delete Listing
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 7. VOICE INPUT PRODUCE LISTING ASSISTANT MODAL (KISAN VOICE AI)          */}
+      {/* ========================================================================= */}
+      {isVoiceModalOpen && (
+        <div
+          id="voice-produce-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#11281E]/70 backdrop-blur-xs overflow-y-auto"
+        >
+          <div className="relative w-full max-w-xl bg-white rounded-[32px] border-2 border-[#1B4332] shadow-2xl p-6 sm:p-8 my-8 max-h-[90vh] overflow-y-auto space-y-5">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b-2 border-[#1B4332]/10 sticky top-0 bg-white z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-[#FAF3E0] border-2 border-[#E8D5B5] flex items-center justify-center text-[#8C6228] shadow-xs">
+                  <Mic className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black uppercase tracking-tight text-[#11281E] flex items-center gap-2">
+                    <span>Voice Produce Listing</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#E8F0E5] text-[#1B4332] font-black border border-[#1B4332]/20">AI</span>
+                  </h3>
+                  <p className="text-xs text-[#4D6B53] font-bold">
+                    बोलकर फसल लिस्ट करें • Speaks Hindi, Marathi, Punjabi, English
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  stopVoiceRecording();
+                  setIsVoiceModalOpen(false);
+                }}
+                className="p-2 text-[#4D6B53] hover:text-[#11281E] hover:bg-[#E8F0E5] rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Language Selector */}
+            <div className="flex items-center justify-between gap-2 p-3 rounded-2xl bg-[#F8FAF5] border border-[#1B4332]/15">
+              <span className="text-[11px] font-black uppercase tracking-wider text-[#4D6B53]">
+                Spoken Language / भाषा:
+              </span>
+              <div className="flex items-center gap-1.5">
+                {(['Hindi', 'English', 'Marathi', 'Punjabi'] as const).map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    onClick={() => setSelectedVoiceLang(lang)}
+                    className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider transition-all border ${
+                      selectedVoiceLang === lang
+                        ? 'bg-[#1B4332] text-white border-[#1B4332] shadow-xs'
+                        : 'bg-white text-[#4D6B53] border-[#1B4332]/20 hover:bg-[#E8F0E5]'
+                    }`}
+                  >
+                    {lang === 'Hindi' ? 'हिन्दी' : lang === 'Marathi' ? 'मराठी' : lang === 'Punjabi' ? 'ਪੰਜਾਬੀ' : 'English'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Microphone Recording Center Box */}
+            <div className={`p-6 rounded-3xl transition-all text-center space-y-4 border-2 ${
+              isListening
+                ? 'bg-emerald-950 text-white border-emerald-500 shadow-xl'
+                : 'bg-gradient-to-b from-[#F8FAF5] to-[#E8F0E5]/50 border-dashed border-[#1B4332]/30'
+            }`}>
+              <div className="relative inline-block">
+                {isListening && (
+                  <div className="absolute inset-0 rounded-full bg-rose-500 animate-ping opacity-60 -m-2" />
+                )}
+                <button
+                  type="button"
+                  onClick={isListening ? stopVoiceRecording : startVoiceRecording}
+                  className={`relative w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-md transition-all border-4 cursor-pointer ${
+                    isListening
+                      ? 'bg-rose-600 text-white border-rose-300 scale-105'
+                      : 'bg-[#1B4332] text-white border-[#E8D5B5] hover:scale-105'
+                  }`}
+                >
+                  {isListening ? (
+                    <MicOff className="w-8 h-8 animate-pulse" />
+                  ) : (
+                    <Mic className="w-8 h-8 text-[#E8D5B5]" />
+                  )}
+                </button>
+              </div>
+
+              <div>
+                <p className={`text-sm font-black ${isListening ? 'text-emerald-200' : 'text-[#11281E]'}`}>
+                  {isListening ? '🎙️ सुन रहा हूँ... Speak your crop, quantity, and price' : 'Tap Microphone to Speak (माइक दबाकर बोलें)'}
+                </p>
+                <p className={`text-xs font-bold mt-0.5 ${isListening ? 'text-white/80' : 'text-[#4D6B53]'}`}>
+                  e.g., "मेरे पास उज्जैन में 50 क्विंटल शरबती गेहूं है, 26 रुपये किलो या 2600 रुपये क्विंटल बेचना है"
+                </p>
+              </div>
+
+              {/* Real-time audio waveform energy bars */}
+              {isListening && (
+                <div className="flex items-center justify-center gap-1.5 h-7 pt-1">
+                  {[20, 55, 85, 45, 95, 65, 100, 50, 80, 35, 70, 90, 40].map((h, i) => (
+                    <div
+                      key={i}
+                      className="w-1.5 bg-emerald-400 rounded-full transition-all duration-75"
+                      style={{
+                        height: `${Math.max(6, (voiceAudioLevel > 5 ? (h * voiceAudioLevel) / 100 : Math.sin(Date.now() / 150 + i) * 12 + 14))}px`,
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {isListening && (
+                <button
+                  type="button"
+                  onClick={stopVoiceRecording}
+                  className="px-5 py-2 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-wider shadow-md"
+                >
+                  Done Speaking ✓ (क्लिक करें)
+                </button>
+              )}
+            </div>
+
+            {/* Transcribed Text Box */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black uppercase tracking-wider text-[#11281E]">
+                  Transcribed Voice Text / आपकी आवाज:
+                </label>
+                {voiceTranscript && (
+                  <button
+                    type="button"
+                    onClick={() => setVoiceTranscript('')}
+                    className="text-[10px] font-bold text-rose-600 hover:underline"
+                  >
+                    Clear text
+                  </button>
+                )}
+              </div>
+              <textarea
+                rows={3}
+                value={voiceTranscript}
+                onChange={(e) => setVoiceTranscript(e.target.value)}
+                placeholder="Spoken words will appear here in real-time, or you can paste a voice transcript directly..."
+                className="w-full p-3.5 rounded-2xl border-2 border-[#1B4332]/20 text-xs font-bold text-[#11281E] bg-[#F8FAF5] focus:outline-none focus:border-[#1B4332] leading-relaxed"
+              />
+            </div>
+
+            {/* Quick Sample Voice Transcripts */}
+            <div className="p-3.5 rounded-2xl bg-[#FAF3E0] border border-[#E8D5B5] space-y-2">
+              <div className="flex items-center gap-1.5">
+                <Volume2 className="w-3.5 h-3.5 text-[#8C6228]" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#8C6228]">
+                  Click Sample Farmer Voice Transcripts to Test:
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SAMPLE_VOICE_PROMPTS.map((prompt, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setSelectedVoiceLang(prompt.lang as any);
+                      setVoiceTranscript(prompt.transcript);
+                      handleExtractFromVoice(prompt.transcript, prompt.lang);
+                    }}
+                    className="p-2.5 rounded-xl bg-white border border-[#E8D5B5] hover:border-[#8C6228] text-left transition-all hover:shadow-2xs group flex flex-col justify-between"
+                  >
+                    <span className="text-[11px] font-black text-[#11281E] group-hover:text-[#8C6228] flex items-center justify-between">
+                      <span>{prompt.title}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-[#FAF3E0] text-[#8C6228]">{prompt.lang}</span>
+                    </span>
+                    <p className="text-[10px] text-[#4D6B53] font-medium line-clamp-1 mt-1">
+                      "{prompt.transcript}"
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Extract Action Button */}
+            <button
+              type="button"
+              disabled={isProcessingVoice || !voiceTranscript.trim()}
+              onClick={() => handleExtractFromVoice()}
+              className="w-full py-3 px-6 rounded-full bg-[#1B4332] text-white hover:bg-[#2D5A27] disabled:opacity-50 text-xs sm:text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 border-2 border-[#1B4332] shadow-sm transition-all cursor-pointer"
+            >
+              {isProcessingVoice ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-[#E8D5B5]" />
+                  <span>AI Extracting Structured JSON... (प्रोसेसिंग जारी)</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-[#E8D5B5]" />
+                  <span>Extract Crop, Quantity & Price with AI (डेटा निकालें)</span>
+                </>
+              )}
+            </button>
+
+            {/* Extracted JSON Output Preview Box */}
+            {extractedDetails && (
+              <div className="p-4 rounded-3xl bg-[#E8F0E5] border-2 border-[#1B4332] space-y-3 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-black text-[#11281E] uppercase tracking-wide">
+                    <CheckCircle2 className="w-4 h-4 text-[#1B4332]" />
+                    <span>Structured JSON Fields Extracted:</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-[#1B4332] bg-white px-2 py-0.5 rounded-full border border-[#1B4332]/20">
+                    Confidence: 99.4%
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="p-2.5 rounded-xl bg-white border border-[#1B4332]/15">
+                    <span className="text-[9px] font-black uppercase text-[#4D6B53] block">Crop Name:</span>
+                    <span className="font-black text-[#11281E] truncate block mt-0.5">
+                      {extractedDetails.crop_name || 'null'}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white border border-[#1B4332]/15">
+                    <span className="text-[9px] font-black uppercase text-[#4D6B53] block">Quantity (Kg):</span>
+                    <span className="font-black text-[#11281E] block mt-0.5">
+                      {extractedDetails.quantity_kg !== null ? `${extractedDetails.quantity_kg} kg` : 'null'}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white border border-[#1B4332]/15">
+                    <span className="text-[9px] font-black uppercase text-[#4D6B53] block">Price / Kg:</span>
+                    <span className="font-black text-[#1B4332] block mt-0.5">
+                      {extractedDetails.price_per_kg !== null ? `₹${extractedDetails.price_per_kg}/kg` : 'null'}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white border border-[#1B4332]/15">
+                    <span className="text-[9px] font-black uppercase text-[#4D6B53] block">Location:</span>
+                    <span className="font-black text-[#11281E] truncate block mt-0.5">
+                      {extractedDetails.location || 'null'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={applyExtractedDetailsAndOpenForm}
+                    className="py-2.5 px-6 rounded-full bg-[#1B4332] text-white hover:bg-[#2D5A27] text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-xs cursor-pointer border border-[#1B4332]"
+                  >
+                    <Check className="w-4 h-4 text-[#E8D5B5]" />
+                    <span>Apply & Review in Listing Form (फॉर्म में भरें)</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

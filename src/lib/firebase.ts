@@ -60,6 +60,59 @@ export const formatAuthEmail = (identifier: string, role: 'farmer' | 'buyer'): s
 };
 
 // ==========================================
+// FIRESTORE ERROR HANDLING
+// ==========================================
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo:
+        auth.currentUser?.providerData?.map((provider) => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.warn('Firestore Error Context: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+
+// ==========================================
 // AUTHENTICATION SERVICES
 // ==========================================
 
@@ -287,7 +340,7 @@ export const subscribeToCropListings = (
       onData(list);
     },
     (error) => {
-      console.error('Firestore crop listings subscription error:', error);
+      console.warn('Firestore crop listings subscription notice:', error?.message || error);
       if (onError) onError(error);
       onData(INITIAL_MARKETPLACE_CROPS);
     }
@@ -304,20 +357,32 @@ export const createCropListing = async (crop: CropListing, userUid?: string): Pr
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-  await setDoc(docRef, data);
+  try {
+    await setDoc(docRef, data);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, `cropListings/${cropId}`);
+  }
 };
 
 export const updateCropListing = async (cropId: string, updates: Partial<CropListing>): Promise<void> => {
   const docRef = doc(db, 'cropListings', cropId);
-  await updateDoc(docRef, {
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  });
+  try {
+    await updateDoc(docRef, {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `cropListings/${cropId}`);
+  }
 };
 
 export const deleteCropListing = async (cropId: string): Promise<void> => {
   const docRef = doc(db, 'cropListings', cropId);
-  await deleteDoc(docRef);
+  try {
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `cropListings/${cropId}`);
+  }
 };
 
 // ==========================================
@@ -343,7 +408,7 @@ export const subscribeToOrders = (
       onData(list);
     },
     (error) => {
-      console.error('Firestore orders subscription error:', error);
+      console.warn('Firestore orders subscription notice:', error?.message || error);
       if (onError) onError(error);
       onData(INITIAL_ORDERS);
     }
@@ -361,20 +426,32 @@ export const createOrderInFirestore = async (order: Order, buyerUid?: string): P
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
-  await setDoc(docRef, data);
+  try {
+    await setDoc(docRef, data);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, `orders/${orderId}`);
+  }
 };
 
 export const updateOrderInFirestore = async (orderId: string, updates: Partial<Order>): Promise<void> => {
   const docRef = doc(db, 'orders', orderId);
-  await updateDoc(docRef, {
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  });
+  try {
+    await updateDoc(docRef, {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`);
+  }
 };
 
 export const deleteOrderInFirestore = async (orderId: string): Promise<void> => {
   const docRef = doc(db, 'orders', orderId);
-  await deleteDoc(docRef);
+  try {
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `orders/${orderId}`);
+  }
 };
 
 // ==========================================
@@ -400,7 +477,7 @@ export const subscribeToMachinery = (
       onData(list);
     },
     (error) => {
-      console.error('Firestore machinery subscription error:', error);
+      console.warn('Firestore machinery subscription notice:', error?.message || error);
       if (onError) onError(error);
       onData(INITIAL_MACHINERY);
     }
@@ -410,22 +487,34 @@ export const subscribeToMachinery = (
 export const createMachineryInFirestore = async (machine: MachineItem, ownerUid?: string): Promise<void> => {
   const id = machine.id || `MC-${Math.floor(1000 + Math.random() * 9000)}`;
   const docRef = doc(db, 'machinery', id);
-  await setDoc(docRef, {
-    ...machine,
-    id,
-    ownerUid: ownerUid || auth.currentUser?.uid || 'demo-farmer-ramesh',
-    createdAt: new Date().toISOString(),
-  });
+  try {
+    await setDoc(docRef, {
+      ...machine,
+      id,
+      ownerUid: ownerUid || auth.currentUser?.uid || 'demo-farmer-ramesh',
+      createdAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, `machinery/${id}`);
+  }
 };
 
 export const updateMachineryInFirestore = async (machineId: string, updates: Partial<MachineItem>): Promise<void> => {
   const docRef = doc(db, 'machinery', machineId);
-  await updateDoc(docRef, updates);
+  try {
+    await updateDoc(docRef, updates);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `machinery/${machineId}`);
+  }
 };
 
 export const deleteMachineryInFirestore = async (machineId: string): Promise<void> => {
   const docRef = doc(db, 'machinery', machineId);
-  await deleteDoc(docRef);
+  try {
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `machinery/${machineId}`);
+  }
 };
 
 export const subscribeToRentalRequests = (
@@ -447,7 +536,7 @@ export const subscribeToRentalRequests = (
       onData(list);
     },
     (error) => {
-      console.error('Firestore rental requests subscription error:', error);
+      console.warn('Firestore rental requests subscription notice:', error?.message || error);
       if (onError) onError(error);
       onData(INITIAL_RENTAL_REQUESTS);
     }
@@ -457,27 +546,40 @@ export const subscribeToRentalRequests = (
 export const createRentalRequestInFirestore = async (rental: RentalRequest, farmerUid?: string): Promise<void> => {
   const id = rental.id || `RR-${Math.floor(1000 + Math.random() * 9000)}`;
   const docRef = doc(db, 'rentalRequests', id);
-  await setDoc(docRef, {
-    ...rental,
-    id,
-    farmerUid: farmerUid || auth.currentUser?.uid || 'demo-farmer-ramesh',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  });
+  try {
+    await setDoc(docRef, {
+      ...rental,
+      id,
+      farmerUid: farmerUid || auth.currentUser?.uid || 'demo-farmer-ramesh',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, `rentalRequests/${id}`);
+  }
 };
 
 export const updateRentalRequestInFirestore = async (rentalId: string, updates: Partial<RentalRequest>): Promise<void> => {
   const docRef = doc(db, 'rentalRequests', rentalId);
-  await updateDoc(docRef, {
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  });
+  try {
+    await updateDoc(docRef, {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `rentalRequests/${rentalId}`);
+  }
 };
 
 export const deleteRentalRequestInFirestore = async (rentalId: string): Promise<void> => {
   const docRef = doc(db, 'rentalRequests', rentalId);
-  await deleteDoc(docRef);
+  try {
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `rentalRequests/${rentalId}`);
+  }
 };
+
 
 // ==========================================
 // AI RECOMMENDATIONS CRUD (Firestore)

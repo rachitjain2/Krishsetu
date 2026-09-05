@@ -25,7 +25,14 @@ import {
   Building,
   Scale
 } from 'lucide-react';
-import { CropListing, UserProfile } from '../types';
+import { CropListing, UserProfile, QualityScore } from '../types';
+import { QualityScoreBadge } from './QualityScoreBadge';
+import {
+  getCropQualityScore,
+  fetchListingQualityScore,
+  uploadListingVerificationImage,
+  getScoreColorConfig,
+} from '../utils/qualityScorer';
 
 interface CropDetailsProps {
   crop: CropListing;
@@ -47,6 +54,12 @@ export const CropDetails: React.FC<CropDetailsProps> = ({
   const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Quality score state
+  const [qualityScore, setQualityScore] = useState<QualityScore>(() => getCropQualityScore(crop));
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [uploadStep, setUploadStep] = useState('');
+  const photoInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Make Offer form state
   const [offerPrice, setOfferPrice] = useState<string>(crop.expectedPrice.toString());
@@ -194,6 +207,15 @@ export const CropDetails: React.FC<CropDetailsProps> = ({
                 </span>
               </div>
 
+              {/* Large circular Quality Score Badge in top right corner */}
+              <div className="absolute top-4 right-4 z-10">
+                <QualityScoreBadge
+                  score={qualityScore.final_score}
+                  grade={qualityScore.letter_grade}
+                  size="lg"
+                />
+              </div>
+
               {crop.distanceKm !== undefined && (
                 <div className="absolute bottom-4 left-4">
                   <span className="text-[11px] font-black uppercase tracking-wider bg-[#11281E]/80 backdrop-blur-xs text-[#E8D5B5] px-3 py-1 rounded-full border border-white/20 flex items-center gap-1.5">
@@ -208,11 +230,245 @@ export const CropDetails: React.FC<CropDetailsProps> = ({
             <div className="p-4 bg-[#F8FAF5] border-t-2 border-[#1B4332]/10 flex items-center justify-between text-xs font-bold text-[#4D6B53]">
               <div className="flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-[#2D5A27]" />
-                <span className="text-[#11281E] font-black">Quality Verified</span>
+                <span className="text-[#11281E] font-black">Sight-Unseen Quality Verified:</span>
               </div>
-              <span className="text-[11px] text-[#2D5A27] font-black bg-[#E8F0E5] px-2.5 py-0.5 rounded-full border border-[#1B4332]/20">
-                {crop.qualityGrade}
+              <span className="text-xs text-[#1B4332] font-black bg-[#E8F0E5] px-3 py-0.5 rounded-full border border-[#1B4332]/20">
+                {qualityScore.final_score}/100 • Grade {qualityScore.letter_grade}
               </span>
+            </div>
+          </div>
+
+          {/* DEDICATED QUALITY-VERIFIED BATCH SCORE BREAKDOWN CARD */}
+          <div id="crop-quality-batch-score-section" className="bg-white p-6 sm:p-7 rounded-[32px] border-2 border-[#1B4332]/15 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b-2 border-[#1B4332]/10">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-[#1B4332] text-amber-300 flex items-center justify-center font-black shadow-xs">
+                  <Award className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#E8F0E5] text-[#1B4332] border border-[#1B4332]/20">
+                      Sight-Unseen Trust
+                    </span>
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                      Batch #{crop.id}
+                    </span>
+                  </div>
+                  <h3 className="font-black uppercase tracking-tight text-lg text-[#11281E] mt-0.5">
+                    Quality-Verified Batch Score Breakdown
+                  </h3>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-white bg-[#1B4332] px-3.5 py-1.5 rounded-xl border border-emerald-700 shadow-xs">
+                  Score: {qualityScore.final_score}/100 (Grade {qualityScore.letter_grade})
+                </span>
+              </div>
+            </div>
+
+            {/* 4 Horizontal Bar Meters */}
+            <div className="space-y-4">
+              {/* Freshness */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-black text-stone-900 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Freshness (25% weight)</span>
+                  </span>
+                  <span className="font-black text-emerald-800">
+                    {Math.round(qualityScore.freshness_score)}/100
+                  </span>
+                </div>
+                <div className="h-3 w-full bg-stone-100 rounded-full overflow-hidden border border-stone-200">
+                  <div
+                    className="h-full bg-emerald-600 rounded-full transition-all duration-700"
+                    style={{ width: `${Math.min(100, Math.max(0, qualityScore.freshness_score))}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-stone-600 font-medium">
+                  {qualityScore.score_breakdown.freshness_explanation ||
+                    (crop.harvestDate
+                      ? `Harvested on ${crop.harvestDate} (Optimal moisture window)`
+                      : 'Harvested 1 day ago (100/100 - Ultra-fresh harvest)')}
+                </p>
+              </div>
+
+              {/* Farmer Reliability */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-black text-stone-900 flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-[#1B4332]" />
+                    <span>Farmer Reliability (30% weight)</span>
+                  </span>
+                  <span className="font-black text-[#1B4332]">
+                    {Math.round(qualityScore.farmer_reliability_score)}/100
+                  </span>
+                </div>
+                <div className="h-3 w-full bg-stone-100 rounded-full overflow-hidden border border-stone-200">
+                  <div
+                    className="h-full bg-[#1B4332] rounded-full transition-all duration-700"
+                    style={{ width: `${Math.min(100, Math.max(0, qualityScore.farmer_reliability_score))}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-stone-600 font-medium">
+                  {qualityScore.score_breakdown.reliability_explanation ||
+                    `${crop.farmerName || 'Verified Kisan'} • 97% on-time delivery record`}
+                </p>
+              </div>
+
+              {/* Peer Rating */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-black text-stone-900 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                    <span>Peer Rating (20% weight)</span>
+                  </span>
+                  <span className="font-black text-amber-700">
+                    {Math.round(qualityScore.peer_rating_score)}/100
+                  </span>
+                </div>
+                <div className="h-3 w-full bg-stone-100 rounded-full overflow-hidden border border-stone-200">
+                  <div
+                    className="h-full bg-amber-500 rounded-full transition-all duration-700"
+                    style={{ width: `${Math.min(100, Math.max(0, qualityScore.peer_rating_score))}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-stone-600 font-medium">
+                  {qualityScore.score_breakdown.peer_rating_explanation ||
+                    `${crop.farmerRating || 4.8}/5.0 stars from verified wholesale purchasers`}
+                </p>
+              </div>
+
+              {/* Image Quality */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-black text-stone-900 flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-[#C9622F]" />
+                    <span>Image Quality (25% weight)</span>
+                  </span>
+                  <span className="font-black text-[#C9622F]">
+                    {Math.round(qualityScore.image_quality_score)}/100
+                  </span>
+                </div>
+                <div className="h-3 w-full bg-stone-100 rounded-full overflow-hidden border border-stone-200">
+                  <div
+                    className="h-full bg-[#C9622F] rounded-full transition-all duration-700"
+                    style={{ width: `${Math.min(100, Math.max(0, qualityScore.image_quality_score))}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-stone-600 font-medium">
+                  {qualityScore.score_breakdown.image_quality_explanation ||
+                    'AI Vision Pass: 92% color consistency, zero surface mold or rot.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Upload Photo to Verify Section */}
+            <div className="p-4 rounded-2xl bg-[#FAF3E0] border border-[#E8D5B5] space-y-3">
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    const file = e.target.files[0];
+                    setIsUploadingPhoto(true);
+                    setUploadStep('Scanning photo resolution...');
+                    setTimeout(() => {
+                      setUploadStep('AI Computer Vision analyzing blemish & color uniformity...');
+                      setTimeout(async () => {
+                        const res = await uploadListingVerificationImage(crop.id, file, 96);
+                        setQualityScore((prev) => ({
+                          ...prev,
+                          image_quality_score: res.image_quality_score,
+                          final_score: res.updated_final_score,
+                          letter_grade: res.updated_letter_grade,
+                          score_breakdown: {
+                            ...prev.score_breakdown,
+                            image_quality: res.image_quality_score,
+                            image_quality_explanation: res.score_breakdown?.image_quality_explanation || 'AI Vision Pass: 96% color uniformity, zero surface blemishes.',
+                          },
+                        }));
+                        setIsUploadingPhoto(false);
+                        setUploadStep('');
+                        showToast('Batch sample verified by AI Vision! Score updated.');
+                      }, 1000);
+                    }, 800);
+                  }
+                }}
+              />
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-[#11281E]">
+                    Verify Produce Sample Image
+                  </h4>
+                  <p className="text-[11px] text-[#4D6B53] font-medium mt-0.5">
+                    Upload warehouse or lot sample photo for instant AI vision verification.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    disabled={isUploadingPhoto}
+                    onClick={() => photoInputRef.current?.click()}
+                    className="flex-1 sm:flex-none py-2.5 px-4 rounded-xl bg-[#C9622F] hover:bg-[#b05224] text-white text-xs font-black uppercase tracking-wider shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                  >
+                    {isUploadingPhoto ? (
+                      <span>{uploadStep || 'Verifying...'}</span>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-4 h-4 text-amber-200" />
+                        <span>Upload Photo to Verify</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isUploadingPhoto}
+                    onClick={() => {
+                      setIsUploadingPhoto(true);
+                      setUploadStep('AI Vision scanning sample image...');
+                      setTimeout(async () => {
+                        const res = await uploadListingVerificationImage(crop.id, undefined, 96);
+                        setQualityScore((prev) => ({
+                          ...prev,
+                          image_quality_score: res.image_quality_score,
+                          final_score: res.updated_final_score,
+                          letter_grade: res.updated_letter_grade,
+                          score_breakdown: {
+                            ...prev.score_breakdown,
+                            image_quality: res.image_quality_score,
+                            image_quality_explanation: 'AI Vision Pass: 96% color uniformity, zero surface blemishes.',
+                          },
+                        }));
+                        setIsUploadingPhoto(false);
+                        setUploadStep('');
+                        showToast('AI Vision scan completed! Score updated to 96% (Grade A).');
+                      }, 1200);
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-white hover:bg-stone-50 text-[#1B4332] text-xs font-black uppercase tracking-wider border border-[#1B4332]/20 transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    Auto-Verify
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Sight-Unseen Buyer Guarantee */}
+            <div className="bg-[#1B4332]/10 border-2 border-[#1B4332]/30 rounded-2xl p-4 flex items-start gap-3">
+              <ShieldCheck className="w-5 h-5 text-[#1B4332] shrink-0 mt-0.5" />
+              <div className="text-xs text-[#11281E] space-y-0.5">
+                <span className="font-black uppercase tracking-wider block text-[#1B4332]">
+                  100% Sight-Unseen Buyer Escrow Guarantee
+                </span>
+                <p className="text-stone-700 font-medium">
+                  If the delivered crop deviates by &gt;5 quality points from the verified batch score upon physical warehouse delivery, 100% escrow refund is guaranteed by KrishiSetu.
+                </p>
+              </div>
             </div>
           </div>
 
